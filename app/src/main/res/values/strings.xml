@@ -203,4 +203,66 @@
     <string name="cd_device_proxmark">Proxmark5 device</string>
     <string name="cd_device_bluetooth">Bluetooth device</string>
     <string name="cd_selected">Selected</string>
+
+    <!-- ViewModel Status Banner & Operation Status Strings -->
+    <string name="status_badge_detected">Detected: %1$s [%2$s]</string>
+    <string name="status_hf_card_detected">HF Card Detected: %1$s [%2$s]</string>
+    <string name="format_hf_iso14443a">SAK: 0x%1$s, ATQA: %2$s</string>
+    <string name="status_permissions_denied">Bluetooth permissions denied — grant Nearby Devices permission or use WiFi TCP</string>
+    <string name="status_rgb_updated">RGB set to R:%1$d G:%2$d B:%3$d</string>
+    <string name="status_rgb_failed">Failed to set RGB</string>
+    <string name="status_antenna_cfg_read">Antenna register: 0x%1$02X (%2$s)</string>
+    <string name="status_antenna_cfg_failed">Antenna controller (0x51) not responding</string>
+    <string name="status_antenna_leds_updated">Antenna Blue LEDs: LF=%1$s | HF=%2$s</string>
+    <string name="status_antenna_leds_failed">Failed to update antenna LEDs</string>
+    <string name="led_state_on">ON</string>
+    <string name="led_state_off">OFF</string>
+    <string name="status_antenna_freq_set">Antenna tuned to %1$s</string>
+    <string name="status_antenna_q_set">Antenna Q-factor set to %1$s</string>
+    <string name="status_charging_enabled">Charge Enabled</string>
+    <string name="status_charging_disabled">Charge Disabled</string>
+    <string name="status_charge_toggle_failed">Failed to toggle charge</string>
+    <string name="status_cutoff_voltage_set">Charge target set to %1$d mV</string>
+    <string name="status_charge_voltage_failed">Failed to set charge voltage</string>
+    <string name="status_ble_name_updated">BLE name updated to \'%1$s\' (BWM restarting…)</string>
+    <string name="status_ble_name_failed">Failed to set BLE name</string>
+    <string name="status_measuring_antenna">Sweeping antenna frequencies (12s)…</string>
+    <string name="status_antenna_tuned">Tuning: LF125=%1$.2fV, LF134=%2$.2fV, HF=%3$.2fV, Peak=%4$.2fV</string>
+    <string name="status_antenna_tuning_failed">Antenna tuning failed</string>
+    <string name="status_watch_started">LF Watch active: %1$s (125 kHz)</string>
+    <string name="status_watch_stopped">LF Watch stopped</string>
+    <string name="status_autoscan_started">Auto-Scanner active: sweeping HID, EM4100, AWID, IO…</string>
+    <string name="status_autoscan_sweeping">Auto-Scanner sweeping: %1$s (125 kHz)…</string>
+    <string name="status_autoscan_stopped">Auto-Scan stopped</string>
+    <string name="status_clone_invalid_uid">Invalid 10-hex UID format</string>
+    <string name="status_cloning_in_progress">Cloning %1$s to transponder…</string>
+    <string name="status_clone_failed">Clone failed</string>
+    <string name="status_scanning_hf">Scanning for ISO 14443-A card…</string>
+    <string name="status_hf_card_found">Found %1$s (UID: %2$s)</string>
+    <string name="status_no_hf_card">No ISO14443A card response</string>
+    <string name="status_t55xx_block_result">Block %1$d: %2$s</string>
+    <string name="status_reading_t55xx_all">Reading all blocks 0–7 (fast MCU ASK)…</string>
+    <string name="status_t55xx_dump_complete">All blocks read completed</string>
+    <string name="status_write_invalid_hex">Invalid 8-hex data value</string>
+    <string name="status_writing_t55xx_block">Writing Block %1$d…</string>
+    <string name="status_write_failed">Write failed</string>
+    <string name="status_dictionary_cancelled">Dictionary cancelled</string>
+    <plurals name="status_testing_passwords">
+        <item quantity="one">Auditing %1$d standard key…</item>
+        <item quantity="other">Auditing %1$d standard keys…</item>
+    </plurals>
+    <string name="status_testing_password_entry">[%1$d/%2$d] Testing 0x%3$s…</string>
+    <string name="status_password_found">Found Valid Password: 0x%1$s!</string>
+    <string name="status_password_recovered_banner">Valid Password: 0x%1$s</string>
+    <string name="status_no_matching_password">Dictionary finished. No matching default password found.</string>
+    <string name="status_white_cloner_derived">Calculated White Cloner Password: 0x%1$08X</string>
+    <string name="status_ping_echo">Ping: OK=%1$s, latency=%2$dms</string>
+    <plurals name="status_vault_exported">
+        <item quantity="one">Exported vault JSON (%1$d byte)</item>
+        <item quantity="other">Exported vault JSON (%1$d bytes)</item>
+    </plurals>
+    <string name="status_vault_export_open_failed">Unable to open destination document</string>
+    <string name="status_vault_export_failed">Vault export failed: %1$s</string>
+    <string name="status_vault_export_failed_generic">Vault export failed</string>
+    <string name="error_io">I/O error</string>
 </resources>

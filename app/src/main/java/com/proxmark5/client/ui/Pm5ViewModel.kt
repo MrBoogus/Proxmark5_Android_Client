@@ -7,9 +7,12 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.PluralsRes
+import androidx.annotation.StringRes
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.proxmark5.client.R
 import com.proxmark5.client.comm.ConnectionState
 import com.proxmark5.client.comm.DiscoveredBleDevice
 import com.proxmark5.client.comm.Pm5BleManager
@@ -126,6 +129,12 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     private var autoScanJob: Job? = null
     private var dictionaryJob: Job? = null
 
+    private fun str(@StringRes resId: Int, vararg args: Any): String =
+        getApplication<Application>().getString(resId, *args)
+
+    private fun pluralStr(@PluralsRes resId: Int, quantity: Int, vararg args: Any): String =
+        getApplication<Application>().resources.getQuantityString(resId, quantity, *args)
+
     init {
         refreshPairedDevices()
         loadSavedTags()
@@ -202,7 +211,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             pm5Manager.badgeFlow.collect { badge ->
                 _uiState.value = _uiState.value.copy(
                     decodedBadge = badge,
-                    statusBanner = "Detected: ${badge.technology} [${badge.uidHex}]"
+                    statusBanner = str(R.string.status_badge_detected, badge.technology, badge.uidHex)
                 )
                 // If EM4100, parse full tag
                 if (badge.technology.contains("EM4100", ignoreCase = true)) {
@@ -231,7 +240,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             pm5Manager.hfCardFlow.collect { card ->
                 _uiState.value = _uiState.value.copy(
                     lastHfCard = card,
-                    statusBanner = "HF Card Detected: ${card.cardType} [${card.uidHex}]"
+                    statusBanner = str(R.string.status_hf_card_detected, card.cardType, card.uidHex)
                 )
                 // Save to Vault (runs off main thread via TagStorageManager)
                 val vaultRes = storageManager.save(
@@ -239,7 +248,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                         uidHex = card.uidHex,
                         technology = card.cardType,
                         frequency = "HF",
-                        formatDescription = "SAK: 0x${card.sakHex}, ATQA: ${card.atqaHex}"
+                        formatDescription = str(R.string.format_hf_iso14443a, card.sakHex, card.atqaHex)
                     )
                 )
                 applyVaultResult(vaultRes)
@@ -263,7 +272,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onPermissionsDenied() {
         _uiState.value = _uiState.value.copy(
-            statusBanner = "Bluetooth permissions denied — grant Nearby Devices permission or use WiFi TCP"
+            statusBanner = str(R.string.status_permissions_denied)
         )
     }
 
@@ -350,7 +359,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val ok = pm5Manager.setRgbColor(r, g, b)
             _uiState.value = _uiState.value.copy(
-                statusBanner = if (ok) "RGB set to R:$r G:$g B:$b" else "Failed to set RGB"
+                statusBanner = if (ok) str(R.string.status_rgb_updated, r, g, b) else str(R.string.status_rgb_failed)
             )
         }
     }
@@ -362,7 +371,11 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.value = _uiState.value.copy(
                 isReadingAntenna = false,
                 antennaConfig = cfg,
-                statusBanner = if (cfg != null) "Antenna register: 0x%02X (%s)".format(cfg.rawByte, cfg.activeFreqString) else "Antenna controller (0x51) not responding"
+                statusBanner = if (cfg != null) {
+                    str(R.string.status_antenna_cfg_read, cfg.rawByte, cfg.activeFreqString)
+                } else {
+                    str(R.string.status_antenna_cfg_failed)
+                }
             )
         }
     }
@@ -382,7 +395,15 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             val ok = pm5Manager.setAntennaLeds(lfEnabled, hfEnabled)
             _uiState.value = _uiState.value.copy(
                 antennaConfig = if (ok) optimistic else current,
-                statusBanner = if (ok) "Antenna Blue LEDs: LF=${if (lfEnabled) "ON" else "OFF"} | HF=${if (hfEnabled) "ON" else "OFF"}" else "Failed to update antenna LEDs"
+                statusBanner = if (ok) {
+                    str(
+                        R.string.status_antenna_leds_updated,
+                        str(if (lfEnabled) R.string.led_state_on else R.string.led_state_off),
+                        str(if (hfEnabled) R.string.led_state_on else R.string.led_state_off)
+                    )
+                } else {
+                    str(R.string.status_antenna_leds_failed)
+                }
             )
         }
     }
@@ -394,7 +415,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 val cfg = pm5Manager.readAntennaConfig()
                 _uiState.value = _uiState.value.copy(
                     antennaConfig = cfg,
-                    statusBanner = "Antenna tuned to $freq"
+                    statusBanner = str(R.string.status_antenna_freq_set, freq)
                 )
             }
         }
@@ -407,7 +428,10 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 val cfg = pm5Manager.readAntennaConfig()
                 _uiState.value = _uiState.value.copy(
                     antennaConfig = cfg,
-                    statusBanner = "Antenna Q-factor set to ${if (highQ) "High Q" else "Low Q"}"
+                    statusBanner = str(
+                        R.string.status_antenna_q_set,
+                        str(if (highQ) R.string.label_high_q else R.string.label_low_q)
+                    )
                 )
             }
         }
@@ -429,7 +453,11 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val ok = pm5Manager.setChargeEnable(enable)
             _uiState.value = _uiState.value.copy(
-                statusBanner = if (ok) "Charge ${if (enable) "Enabled" else "Disabled"}" else "Failed to toggle charge"
+                statusBanner = if (ok) {
+                    str(if (enable) R.string.status_charging_enabled else R.string.status_charging_disabled)
+                } else {
+                    str(R.string.status_charge_toggle_failed)
+                }
             )
             delay(300)
             pm5Manager.readBattery()
@@ -440,7 +468,11 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val ok = pm5Manager.setChargeVoltage(millivolts)
             _uiState.value = _uiState.value.copy(
-                statusBanner = if (ok) "Charge target set to $millivolts mV" else "Failed to set charge voltage"
+                statusBanner = if (ok) {
+                    str(R.string.status_cutoff_voltage_set, millivolts)
+                } else {
+                    str(R.string.status_charge_voltage_failed)
+                }
             )
         }
     }
@@ -451,21 +483,23 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             val ok = pm5Manager.setBleName(name)
             _uiState.value = _uiState.value.copy(
                 bleAdvertisingName = name,
-                statusBanner = if (ok) "BLE name updated to '$name' (BWM restarting...)" else "Failed to set BLE name"
+                statusBanner = if (ok) str(R.string.status_ble_name_updated, name) else str(R.string.status_ble_name_failed)
             )
         }
     }
 
     fun measureAntennaTuning() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isTuningAntenna = true, statusBanner = "Sweeping antenna frequencies (12s)...")
+            _uiState.value = _uiState.value.copy(isTuningAntenna = true, statusBanner = str(R.string.status_measuring_antenna))
             val tuning = pm5Manager.measureAntennaTuning(16000)
             _uiState.value = _uiState.value.copy(
                 antennaTuning = tuning,
                 isTuningAntenna = false,
                 statusBanner = if (tuning != null) {
-                    "Tuning: LF125=%.2fV, LF134=%.2fV, HF=%.2fV, Peak=%.2fV".format(tuning.lf125V, tuning.lf134V, tuning.hfV, tuning.peakV)
-                } else "Antenna tuning failed"
+                    str(R.string.status_antenna_tuned, tuning.lf125V, tuning.lf134V, tuning.hfV, tuning.peakV)
+                } else {
+                    str(R.string.status_antenna_tuning_failed)
+                }
             )
         }
     }
@@ -496,7 +530,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 isWatchingAwid = tech == "AWID" && active,
                 isWatchingIo = tech == "IO" && active,
                 isAutoScanning = false,
-                statusBanner = if (active) "LF Watch active: $tech (125 kHz)" else "LF Watch stopped"
+                statusBanner = if (active) str(R.string.status_watch_started, tech) else str(R.string.status_watch_stopped)
             )
         }
     }
@@ -513,7 +547,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             isWatchingEm4100 = false,
             isWatchingAwid = false,
             isWatchingIo = false,
-            statusBanner = "Auto-Scanner active: sweeping HID, EM4100, AWID, IO..."
+            statusBanner = str(R.string.status_autoscan_started)
         )
 
         autoScanJob = viewModelScope.launch(Dispatchers.IO) {
@@ -533,7 +567,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                     isWatchingEm4100 = mode == "EM4100" && active,
                     isWatchingAwid = mode == "AWID" && active,
                     isWatchingIo = mode == "IO" && active,
-                    statusBanner = "Auto-Scanner sweeping: $mode (125 kHz)..."
+                    statusBanner = str(R.string.status_autoscan_sweeping, mode)
                 )
                 delay(3200)
                 pm5Manager.breakLoop()
@@ -554,7 +588,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 isWatchingEm4100 = false,
                 isWatchingAwid = false,
                 isWatchingIo = false,
-                statusBanner = "Auto-Scan stopped"
+                statusBanner = str(R.string.status_autoscan_stopped)
             )
         }
     }
@@ -566,14 +600,14 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     fun executeClone(uidHex: String) {
         val em = Em4100Decoder.fromHex(uidHex)
         if (em == null) {
-            _uiState.value = _uiState.value.copy(cloneStatus = "Invalid 10-hex UID format")
+            _uiState.value = _uiState.value.copy(cloneStatus = str(R.string.status_clone_invalid_uid))
             return
         }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 isBusy = true,
                 lastEm4100Tag = em,
-                cloneStatus = "Cloning ${em.uidHex} to transponder..."
+                cloneStatus = str(R.string.status_cloning_in_progress, em.uidHex)
             )
             val res = pm5Manager.cloneEm4100(
                 uid = em.uidLong,
@@ -583,7 +617,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             )
             _uiState.value = _uiState.value.copy(
                 isBusy = false,
-                cloneStatus = res.getOrElse { it.message ?: "Clone failed" },
+                cloneStatus = res.getOrElse { it.message ?: str(R.string.status_clone_failed) },
                 statusBanner = res.getOrNull()
             )
         }
@@ -593,11 +627,15 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
     fun scanIso14443a() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isScanningHf = true, hfStatus = "Scanning for ISO 14443-A card...")
+            _uiState.value = _uiState.value.copy(isScanningHf = true, hfStatus = str(R.string.status_scanning_hf))
             val card = pm5Manager.readIso14443a(4000)
             _uiState.value = _uiState.value.copy(
                 isScanningHf = false,
-                hfStatus = if (card != null) "Found ${card.cardType} (UID: ${card.uidHex})" else "No ISO14443A card response"
+                hfStatus = if (card != null) {
+                    str(R.string.status_hf_card_found, card.cardType, card.uidHex)
+                } else {
+                    str(R.string.status_no_hf_card)
+                }
             )
         }
     }
@@ -663,19 +701,19 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 isBusy = false,
                 t55xxBlocks = map,
                 lastReadResult = result,
-                statusBanner = "Block $block: ${result.hexValue}"
+                statusBanner = str(R.string.status_t55xx_block_result, block, result.hexValue)
             )
         }
     }
 
     fun readAllT55xxBlocks() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isBusy = true, statusBanner = "Reading all blocks 0-7 (fast MCU ASK)...")
+            _uiState.value = _uiState.value.copy(isBusy = true, statusBanner = str(R.string.status_reading_t55xx_all))
             for (b in 0..7) {
                 readT55xxBlock(b)
                 delay(100)
             }
-            _uiState.value = _uiState.value.copy(isBusy = false, statusBanner = "All blocks read completed")
+            _uiState.value = _uiState.value.copy(isBusy = false, statusBanner = str(R.string.status_t55xx_dump_complete))
         }
     }
 
@@ -684,7 +722,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         val valHex = _uiState.value.writeBlockDataHex
         val value = valHex.toLongOrNull(16)
         if (value == null) {
-            _uiState.value = _uiState.value.copy(writeStatus = "Invalid 8-hex data value")
+            _uiState.value = _uiState.value.copy(writeStatus = str(R.string.status_write_invalid_hex))
             return
         }
         val pwd = parsePassword()
@@ -693,11 +731,11 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         val dlMode = _uiState.value.t55xxDownlinkMode
 
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isBusy = true, writeStatus = "Writing Block $block...")
+            _uiState.value = _uiState.value.copy(isBusy = true, writeStatus = str(R.string.status_writing_t55xx_block, block))
             val res = pm5Manager.writeT55xxBlock(block, value, page, pwd, usePwd, false, dlMode)
             _uiState.value = _uiState.value.copy(
                 isBusy = false,
-                writeStatus = res.getOrElse { it.message ?: "Write failed" },
+                writeStatus = res.getOrElse { it.message ?: str(R.string.status_write_failed) },
                 statusBanner = res.getOrNull()
             )
             // Re-read block to confirm
@@ -711,21 +749,24 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     fun runPasswordDictionary() {
         if (_uiState.value.isCheckingPwds) {
             dictionaryJob?.cancel()
-            _uiState.value = _uiState.value.copy(isCheckingPwds = false, chkPwdStatus = "Dictionary cancelled")
+            _uiState.value = _uiState.value.copy(isCheckingPwds = false, chkPwdStatus = str(R.string.status_dictionary_cancelled))
             return
         }
 
         dictionaryJob = viewModelScope.launch(Dispatchers.IO) {
+            val dictCount = T55xxPayloadBuilder.DEFAULT_DICTIONARY.size
             _uiState.value = _uiState.value.copy(
                 isCheckingPwds = true,
                 foundPassword = null,
-                chkPwdStatus = "Auditing ${T55xxPayloadBuilder.DEFAULT_DICTIONARY.size} standard keys..."
+                chkPwdStatus = pluralStr(R.plurals.status_testing_passwords, dictCount, dictCount)
             )
 
             val dictionary = T55xxPayloadBuilder.DEFAULT_DICTIONARY
             for ((idx, pwd) in dictionary.withIndex()) {
                 val hex = "%08X".format(pwd)
-                _uiState.value = _uiState.value.copy(chkPwdStatus = "[$idx/${dictionary.size}] Testing 0x$hex...")
+                _uiState.value = _uiState.value.copy(
+                    chkPwdStatus = str(R.string.status_testing_password_entry, idx, dictionary.size, hex)
+                )
                 val read = pm5Manager.readT55xxBlock(0, 0, pwd, usePwd = true, timeoutMs = 1500)
                 if (read.rawValue != null && read.status == Pm5Constants.PM3_SUCCESS) {
                     _uiState.value = _uiState.value.copy(
@@ -733,8 +774,8 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                         foundPassword = pwd,
                         t55xxPasswordHex = hex,
                         t55xxUsePwd = true,
-                        chkPwdStatus = "Found Valid Password: 0x$hex!",
-                        statusBanner = "Valid Password: 0x$hex"
+                        chkPwdStatus = str(R.string.status_password_found, hex),
+                        statusBanner = str(R.string.status_password_recovered_banner, hex)
                     )
                     return@launch
                 }
@@ -743,7 +784,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
             _uiState.value = _uiState.value.copy(
                 isCheckingPwds = false,
-                chkPwdStatus = "Dictionary finished. No matching default password found."
+                chkPwdStatus = str(R.string.status_no_matching_password)
             )
         }
     }
@@ -755,7 +796,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             whiteClonerCalculatedPwd = calculated,
             t55xxPasswordHex = "%08X".format(calculated),
             t55xxUsePwd = true,
-            statusBanner = "Calculated White Cloner Password: 0x%08X".format(calculated)
+            statusBanner = str(R.string.status_white_cloner_derived, calculated)
         )
     }
 
@@ -774,7 +815,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 2000
             )
             _uiState.value = _uiState.value.copy(
-                statusBanner = "Ping: ok=${res.success}, latency=${res.latencyMs}ms"
+                statusBanner = str(R.string.status_ping_echo, res.success.toString(), res.latencyMs)
             )
         }
     }
@@ -830,19 +871,19 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                                 ?.use { out ->
                                     out.write(bytes)
                                     out.flush()
-                                } ?: error("Unable to open destination document")
+                                } ?: error(str(R.string.status_vault_export_open_failed))
                             bytes.size
                         }
                     }
                     writeResult.fold(
                         onSuccess = { byteCount ->
                             _uiState.value = _uiState.value.copy(
-                                statusBanner = "Exported vault JSON ($byteCount bytes)"
+                                statusBanner = pluralStr(R.plurals.status_vault_exported, byteCount, byteCount)
                             )
                         },
                         onFailure = { err ->
                             _uiState.value = _uiState.value.copy(
-                                statusBanner = "Vault export failed: ${err.message ?: "I/O error"}"
+                                statusBanner = str(R.string.status_vault_export_failed, err.message ?: str(R.string.error_io))
                             )
                         }
                     )
@@ -850,7 +891,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                 onFailure = { err ->
                     _uiState.value = _uiState.value.copy(
                         vaultError = err.message,
-                        statusBanner = err.message ?: "Vault export failed"
+                        statusBanner = err.message ?: str(R.string.status_vault_export_failed_generic)
                     )
                 }
             )

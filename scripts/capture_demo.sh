@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Repeatable Live Hardware Demo & Screenshot Capture Script
 # Hardware:
-#   - Android device over ADB (Galaxy Z Fold 7, RFCY80A7WVL)
-#   - Battery-powered Proxmark5 BWM connected over BLE (58:2A:BD:XX:XX:XX)
+#   - Android device over ADB (configure via ADB_SERIAL, COVER_DISPLAY, INNER_DISPLAY)
+#   - Battery-powered Proxmark5 BWM connected over BLE
 #   - Proxmark3 Easy connected over USB (/dev/ttyACM0)
 set -euo pipefail
 
@@ -10,12 +10,12 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MEDIA_DIR="${REPO_ROOT}/docs/media"
 RAW_DIR="${REPO_ROOT}/build/demo_raw"
 FASTLANE_SHOTS="${REPO_ROOT}/fastlane/metadata/android/en-US/images/phoneScreenshots"
-SERIAL="${ADB_SERIAL:-RFCY80A7WVL}"
+SERIAL="${ADB_SERIAL:?Set ADB_SERIAL to target device serial}"
 APP_PKG="${APP_PKG:-com.proxmark5.client.debug}"
 PM3_BIN="${PM3_BIN:-/home/Boogus/proxmark3/pm3}"
 
-COVER_DISPLAY="4630946872173396372"
-INNER_DISPLAY="4630946449689556883"
+COVER_DISPLAY="${COVER_DISPLAY:?Set COVER_DISPLAY to cover display ID}"
+INNER_DISPLAY="${INNER_DISPLAY:?Set INNER_DISPLAY to inner display ID}"
 
 mkdir -p "${MEDIA_DIR}" "${RAW_DIR}" "${FASTLANE_SHOTS}"
 
