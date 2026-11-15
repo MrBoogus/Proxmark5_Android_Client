@@ -101,8 +101,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* -R "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$TAG" dist/* --title "Proxmark5 Android Client — $TAG" --generate-notes
+            gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --title "Proxmark5 Android Client — $TAG" --generate-notes
           fi
