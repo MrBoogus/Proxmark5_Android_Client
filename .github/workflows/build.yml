@@ -8,11 +8,13 @@ on:
     branches: [ "main", "master" ]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      EXPECTED_CERT_SHA256: "64e513e62f287c446bf0d3b5acdf282e54cb9eb8182524c2d686d48ee39ffab4"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,26 +29,74 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Run Unit Tests & Build APKs
-        run: ./gradlew testDebugUnitTest assembleDebug assembleRelease
-
-      - name: Package APKs & SHA-256 Checksums
+      - name: Configure Release Signing Keystore from Secrets
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Missing release signing secrets (ANDROID_KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD)."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "${RUNNER_TEMP}/pm5-release.jks"
+          chmod 600 "${RUNNER_TEMP}/pm5-release.jks"
+          cat <<EOF > keystore.properties
+          storeFile=${RUNNER_TEMP}/pm5-release.jks
+          storePassword=${KEYSTORE_PASSWORD}
+          keyAlias=${KEY_ALIAS}
+          keyPassword=${KEY_PASSWORD}
+          EOF
+          chmod 600 keystore.properties
+
+      - name: Run Unit Tests, Lint & Build APKs
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ./gradlew testDebugUnitTest lint assembleDebug
+          else
+            ./gradlew testDebugUnitTest lint assembleDebug assembleRelease
+          fi
+
+      - name: Verify Release APK Signer Fingerprint & Package Assets
+        if: github.event_name != 'pull_request'
+        run: |
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner | sort -V | tail -n 1)"
+          ACTUAL_SHA256="$("$APKSIGNER" verify --print-certs "$APK_PATH" | awk '/certificate SHA-256 digest:/ {print tolower($NF); exit}')"
+          echo "Verified APK signer SHA-256: ${ACTUAL_SHA256}"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::APK signer SHA-256 mismatch! Expected $EXPECTED_CERT_SHA256, got $ACTUAL_SHA256"
+            exit 1
+          fi
           mkdir -p dist
           VERSION="${GITHUB_REF_NAME:-dev}"
-          cp app/build/outputs/apk/release/*.apk "dist/Proxmark5-Android-Client-${VERSION}-release.apk"
-          cp app/build/outputs/apk/debug/*.apk "dist/Proxmark5-Android-Client-${VERSION}-debug.apk"
-          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+          cp "$APK_PATH" "dist/Proxmark5-Android-Client-${VERSION}-release.apk"
+          (cd dist && sha256sum "Proxmark5-Android-Client-${VERSION}-release.apk" > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload APK Artifacts
+      - name: Upload Signed Release APK Artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: Proxmark5-Android-Client-APKs
+          name: Proxmark5-Android-Client-Release
           path: dist/*
 
-      - name: Attach APKs to GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/v')
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Verified Release Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: Proxmark5-Android-Client-Release
+          path: dist
+
+      - name: Attach Signed Release APK to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

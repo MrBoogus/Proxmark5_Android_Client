@@ -58,7 +58,7 @@ When you carry a battery-powered Proxmark5 in the field, you often want to check
 
 All screenshots and the live `demo.mp4` / `demo.gif` in this repository were captured on real hardware using the automated script in [`scripts/capture_demo.sh`](scripts/capture_demo.sh):
 
-1. **Proxmark5 BWM** running untethered on internal Li-Po battery (`Iceman/master v4.23346+`), paired over BLE (`58:2A:BD:34:5E:52`) to the Android device.
+1. **Proxmark5 BWM** running untethered on internal Li-Po battery (`Iceman/master v4.23346+`), paired over BLE (`58:2A:BD:XX:XX:XX`) to the Android device.
 2. **Proxmark3 Easy (512 KB)** connected over USB (`/dev/ttyACM0`) to the host workstation and placed facing the PM5 coil to act as a controlled RF signal generator and tag emulator (`hf 14a sim -t 1 -u 11223344`, `hf 14a sim -t 3 -u 04AABBCCDDEE11`, `lf tune`). Only synthetic test UIDs were used.
 3. **Samsung Galaxy Z Fold 6 (`SM-F966B`, Android 15)** connected to the workstation via `adb`, recorded in both folded cover posture (`1080×2520`) and unfolded tablet posture (`1968×2184`) with Android SystemUI Demo Mode enabled for a clean status bar.
 
@@ -70,7 +70,7 @@ All screenshots and the live `demo.mp4` / `demo.gif` in this repository were cap
 - **Proxmark Firmware:** Recent `RfidResearchGroup/proxmark3` (**Iceman fork**) supporting `PM3a` (`COMMANDNG`) binary frames.
   - Works out of the box with standard stock Iceman firmware flashed onto a Proxmark5.
   - An automated weekly GitHub Actions workflow ([`.github/workflows/watch-upstream.yml`](.github/workflows/watch-upstream.yml)) compiles upstream RRG/Iceman headers against 178 C11 `_Static_assert` checks ([`.github/scripts/verify_upstream_contract.py`](.github/scripts/verify_upstream_contract.py)) to detect any upstream wire-protocol drift.
-- **Android Version:** **Android 8.0 Oreo (`minSdk 26`) through Android 15 (`targetSdk 35`)**.
+- **Android Version:** **Android 8.0 Oreo (`minSdk 26`) through Android 14/15 (`targetSdk 34`)**.
 
 ### Required Android Permissions
 

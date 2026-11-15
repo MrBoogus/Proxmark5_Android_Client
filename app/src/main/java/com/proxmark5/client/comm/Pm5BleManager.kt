@@ -117,6 +117,12 @@ class Pm5BleManager(
     private var isScanning = false
     var autoConnectOnScan: Boolean = true
     private var scanAdapter: BluetoothAdapter? = null
+    private var scanTimeoutJob: Job? = null
+
+    companion object {
+        private const val SCAN_TIMEOUT_MS = 15_000L
+    }
+
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -126,8 +132,6 @@ class Pm5BleManager(
                 val isPm5 = name.contains("Proxmark", ignoreCase = true) ||
                         name.contains("PM5", ignoreCase = true) ||
                         result.scanRecord?.serviceUuids?.any { it.uuid == Pm5Constants.BLE_SERVICE_UUID } == true
-
-                Log.i("PM5Ble", "BLE Scan Result: name='$name', addr='$addr', isPm5=$isPm5, svcUuids=${result.scanRecord?.serviceUuids}")
 
                 val current = _discoveredDevices.value.toMutableList()
                 val idx = current.indexOfFirst { it.address == addr }
@@ -146,7 +150,6 @@ class Pm5BleManager(
                 _discoveredDevices.value = current
 
                 if (autoConnectOnScan && isPm5 && _connectionState.value is ConnectionState.Scanning) {
-                    Log.i("PM5Ble", "Found Proxmark5 via BLE scan! Stopping scan and connecting directly to $addr...")
                     stopScan(scanAdapter)
                     scope.launch {
                         connectBle(dev)
@@ -157,6 +160,8 @@ class Pm5BleManager(
 
         override fun onScanFailed(errorCode: Int) {
             isScanning = false
+            scanTimeoutJob?.cancel()
+            scanTimeoutJob = null
             scope.launch { _logFlow.emit("[BLE SCAN] Failed with error code $errorCode") }
         }
     }
@@ -173,6 +178,7 @@ class Pm5BleManager(
             return
         }
         val scanner = adapter.bluetoothLeScanner ?: return
+        scanTimeoutJob?.cancel()
         _discoveredDevices.value = emptyList()
         isScanning = true
         _connectionState.value = ConnectionState.Scanning
@@ -183,7 +189,14 @@ class Pm5BleManager(
 
         try {
             scanner.startScan(null, settings, scanCallback)
-            scope.launch { _logFlow.emit("[BLE SCAN] Scanning for Proxmark5 BWM...") }
+            scope.launch { _logFlow.emit("[BLE SCAN] Scanning for Proxmark5 BWM (15s timeout)...") }
+            scanTimeoutJob = scope.launch {
+                delay(SCAN_TIMEOUT_MS)
+                if (isScanning) {
+                    _logFlow.emit("[BLE SCAN] Scan timed out after 15s")
+                    stopScan(scanAdapter)
+                }
+            }
         } catch (e: Exception) {
             isScanning = false
             scope.launch { _logFlow.emit("[BLE SCAN ERROR] ${e.message}") }
@@ -192,6 +205,8 @@ class Pm5BleManager(
 
     @SuppressLint("MissingPermission")
     fun stopScan(adapter: BluetoothAdapter?) {
+        scanTimeoutJob?.cancel()
+        scanTimeoutJob = null
         if (!isScanning) return
         isScanning = false
         try {
@@ -210,7 +225,7 @@ class Pm5BleManager(
         disconnect()
         val devName = device.name ?: Pm5Constants.DEFAULT_BLE_NAME
         _connectionState.value = ConnectionState.Connecting(devName)
-        scope.launch { _logFlow.emit("[BLE] Connecting to $devName (${device.address})...") }
+        scope.launch { _logFlow.emit("[BLE] Connecting to $devName...") }
 
         val gattConnectedDeferred = CompletableDeferred<Boolean>()
 
@@ -359,11 +374,7 @@ class Pm5BleManager(
         }
 
         try {
-            bluetoothGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-            } else {
-                device.connectGatt(context, false, gattCallback)
-            }
+            bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.Error("Failed to initiate BLE connection: ${e.message}")
             return@withContext false
@@ -506,7 +517,7 @@ class Pm5BleManager(
                 char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
 
                 var initiated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == BluetoothGatt.GATT_SUCCESS
+                    gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == android.bluetooth.BluetoothStatusCodes.SUCCESS
                 } else {
                     @Suppress("DEPRECATION")
                     char.value = chunk
@@ -518,7 +529,7 @@ class Pm5BleManager(
                     Log.w("PM5Ble", "writeCharacteristic not initiated immediately, waiting 35ms and retrying...")
                     delay(35)
                     initiated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == BluetoothGatt.GATT_SUCCESS
+                        gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == android.bluetooth.BluetoothStatusCodes.SUCCESS
                     } else {
                         @Suppress("DEPRECATION")
                         char.value = chunk
@@ -559,11 +570,9 @@ class Pm5BleManager(
                 .replace("\u0000", "")
             val cleanText = Regex("\\u001B\\[[;\\d]*[A-Za-z]").replace(rawText, "").trim()
             if (cleanText.isNotEmpty()) {
-                Log.i("PM5Rx", "Dbp: $cleanText")
                 scope.launch { _logFlow.emit(cleanText) }
                 val badge = BadgeParser.parse(cleanText)
                 if (badge != null) {
-                    Log.i("PM5Rx", "Decoded badge: ${badge.technology} uid=${badge.uidHex} card=${badge.cardId}")
                     scope.launch { _badgeFlow.emit(badge) }
                 }
             }
@@ -1066,8 +1075,6 @@ class Pm5BleManager(
             .putShort(0)
             .array()
         val resp = executeTransaction(Pm5Constants.CMD_HF_ISO14443A_READER, payload, timeoutMs) ?: return null
-        val rxHex = resp.payload.take(24).joinToString(" ") { "%02X".format(it) }
-        Log.i("PM5Rx", "ISO14443A status=${resp.status} len=${resp.payload.size} head=[$rxHex]")
         scope.launch {
             _logFlow.emit("[HF 14443A] status=${Pm5Constants.statusToString(resp.status.toInt())} len=${resp.payload.size}")
         }

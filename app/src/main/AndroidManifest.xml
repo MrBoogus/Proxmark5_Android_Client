@@ -24,7 +24,7 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- WiFi & Network for BWM WiFi TCP connection (port 18888) -->
+    <!-- WiFi & Network for BWM WiFi TCP connection -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -32,17 +32,33 @@
     <!-- Haptic feedback for card detection -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Optional hardware feature declarations for F-Droid / store compatibility -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.wifi"
+        android:required="false" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@android:style/Theme.Material.NoActionBar"
+        tools:targetApi="s">
         <activity
             android:name=".MainActivity"
             android:exported="true"

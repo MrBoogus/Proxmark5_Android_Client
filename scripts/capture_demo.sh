@@ -2,7 +2,7 @@
 # Repeatable Live Hardware Demo & Screenshot Capture Script
 # Hardware:
 #   - Android device over ADB (Galaxy Z Fold 6, RFCY80A7WVL)
-#   - Battery-powered Proxmark5 BWM connected over BLE (58:2A:BD:34:5E:52)
+#   - Battery-powered Proxmark5 BWM connected over BLE (58:2A:BD:XX:XX:XX)
 #   - Proxmark3 Easy connected over USB (/dev/ttyACM0)
 set -euo pipefail
 

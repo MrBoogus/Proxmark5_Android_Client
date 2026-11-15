@@ -77,7 +77,7 @@ def create_hud_overlay(
 
     # Live Hardware Status Pill (Right-aligned)
     draw.rounded_rectangle([rx + 440, 44, rx + rw, 82], radius=8, fill=(8, 40, 26), outline=(0, 230, 118), width=2)
-    draw.text((rx + 458, 52), "LIVE BLE: PM5 BWM (58:2A:BD:34:5E:52)", font=f_badge, fill=(0, 230, 118))
+    draw.text((rx + 458, 52), "LIVE BLE: PM5 BWM (58:2A:BD:XX:XX:XX)", font=f_badge, fill=(0, 230, 118))
 
     # Title & Subtitle
     draw.text((rx, 104), title, font=f_title, fill=(240, 246, 252, 255))
@@ -288,7 +288,7 @@ def main():
             "term": [
                 "$ adb devices -l",
                 "RFCY80A7WVL  device model:SM_F966B transport_id:1",
-                "[+] BLE GATT Connected: Proxmark5 (58:2A:BD:34:5E:52), MTU=256",
+                "[+] BLE GATT Connected: Proxmark5 (58:2A:BD:XX:XX:XX), MTU=256",
                 "[+] handshake complete: PM3a binary protocol active",
                 "[+] BQ27427 fuel gauge: SoC=69%, 3805mV, -231mA (Discharging)",
                 "[+] Smart Antenna (I2C 0x51) Reg 0x02 <- 0x87 (125kHz + High-Q)",
@@ -318,7 +318,7 @@ def main():
             "term": [
                 "[usb] pm3 --> lf tune --divisor 95",
                 "[=] Measuring LF antenna on Proxmark3 Easy bench sensor...",
-                "[+] PM5 0x0400 sweep triggered over BLE (58:2A:BD:34:5E:52)",
+                "[+] PM5 0x0400 sweep triggered over BLE (58:2A:BD:XX:XX:XX)",
                 "[+] PM5 ADC result: LF125=48.40V | LF134=22.34V | HF=34.87V",
                 "[+] Peak resonance: 50.40V @ 125.00 kHz (divisor 95)",
                 "[+] High-Q factor switch doubled LF 125kHz tank voltage",

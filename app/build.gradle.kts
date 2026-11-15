@@ -12,6 +12,19 @@ val keystoreProps = Properties().apply {
     }
 }
 
+val isReleaseSigningRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.contains("Release", ignoreCase = true) &&
+        !taskName.contains("UnitTest", ignoreCase = true) &&
+        !taskName.contains("Lint", ignoreCase = true)
+}
+
+if (isReleaseSigningRequested && !keystorePropsFile.exists()) {
+    throw GradleException(
+        "Missing keystore.properties at ${keystorePropsFile.absolutePath}. " +
+            "Release builds must be signed with the release keystore and cannot fall back to the debug keystore."
+    )
+}
+
 android {
     namespace = "com.proxmark5.client"
     compileSdk = 34
@@ -44,18 +57,14 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (keystorePropsFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
         debug {
-            applicationIdSuffix = ""
+            applicationIdSuffix = ".debug"
         }
     }
 
@@ -70,10 +79,16 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.11"
+    }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
     packaging {
@@ -88,6 +103,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.activity:activity-compose:1.9.0")
+    implementation("androidx.security:security-crypto:1.0.0")
 
     val composeBom = platform("androidx.compose:compose-bom:2024.04.01")
     implementation(composeBom)

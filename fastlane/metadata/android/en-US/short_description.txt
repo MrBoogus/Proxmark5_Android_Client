@@ -1,1 +1,1 @@
-Native BLE & Wi-Fi companion studio for the Proxmark5 (BWM, LF/HF, T55xx, Antenna)
+Native BLE & Wi-Fi field studio for the Proxmark5 BWM (LF/HF, T55xx, Antenna)

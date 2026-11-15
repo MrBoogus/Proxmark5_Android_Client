@@ -1,9 +1,12 @@
 package com.proxmark5.client.data
 
 import android.content.Context
+import androidx.security.crypto.EncryptedFile
+import androidx.security.crypto.MasterKeys
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 data class CapturedTag(
@@ -53,11 +56,22 @@ class TagStorageManager(private val context: Context) {
         File(context.filesDir, "pm5_saved_tags.json")
     }
 
+    private fun buildEncryptedFile(file: File): EncryptedFile {
+        val masterKeyAlias = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+        return EncryptedFile.Builder(
+            file,
+            context,
+            masterKeyAlias,
+            EncryptedFile.FileEncryptionScheme.AES256_GCM_HKDF_4KB
+        ).build()
+    }
+
     @Synchronized
     fun loadAll(): List<CapturedTag> {
         if (!storageFile.exists()) return emptyList()
         return try {
-            val content = storageFile.readText()
+            val content = readEncryptedOrMigrate()
+            if (content.isBlank()) return emptyList()
             val jsonArray = JSONArray(content)
             val list = mutableListOf<CapturedTag>()
             for (i in 0 until jsonArray.length()) {
@@ -102,11 +116,45 @@ class TagStorageManager(private val context: Context) {
         return array.toString(2)
     }
 
+    private fun readEncryptedOrMigrate(): String {
+        return try {
+            buildEncryptedFile(storageFile).openFileInput().use { input ->
+                String(input.readBytes(), StandardCharsets.UTF_8)
+            }
+        } catch (_: Exception) {
+            // One-time migration if a legacy plaintext JSON file exists from v1.0.0
+            val legacyText = try {
+                storageFile.readText(StandardCharsets.UTF_8)
+            } catch (_: Exception) {
+                ""
+            }
+            if (legacyText.trimStart().startsWith("[")) {
+                writeEncrypted(legacyText)
+                legacyText
+            } else {
+                ""
+            }
+        }
+    }
+
+    private fun writeEncrypted(jsonText: String) {
+        try {
+            if (storageFile.exists()) {
+                storageFile.delete()
+            }
+            buildEncryptedFile(storageFile).openFileOutput().use { output ->
+                output.write(jsonText.toByteArray(StandardCharsets.UTF_8))
+                output.flush()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
     private fun persist(list: List<CapturedTag>) {
         try {
             val array = JSONArray()
             list.forEach { array.put(it.toJson()) }
-            storageFile.writeText(array.toString(2))
+            writeEncrypted(array.toString(2))
         } catch (_: Exception) {
         }
     }
