@@ -4,6 +4,20 @@ All notable changes to **Proxmark5 Android Client** are documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with deterministic Android `versionCode = MAJOR * 10000 + MINOR * 100 + PATCH`.
 
+## [1.0.3] - 2026-11-15 (`versionCode 10003`)
+
+### Security
+- **Permission-Gated Debug Receiver (`MainActivity.kt`):** Initialized `debugReceiver` only when `BuildConfig.DEBUG` is `true` (`null` in release builds, stripping all automation hooks from release DEX) and registered it in debug builds with `"android.permission.DUMP"` and `ContextCompat.RECEIVER_EXPORTED` so `adb shell` and system callers work without exposing hooks to third-party apps.
+- **Demo Script Configuration (`scripts/capture_demo.sh`):** Removed hardcoded ADB device serial and display IDs, requiring `ADB_SERIAL`, `COVER_DISPLAY`, and `INNER_DISPLAY` via environment variables.
+
+### Changed & Build Toolchain
+- **AGP 9.5.1 / Gradle 9.9.1 & Library Upgrades (`build.gradle.kts`, `app/build.gradle.kts`, `gradle-wrapper.properties`):** Upgraded Gradle Wrapper (`8.11.1` → `9.9.1` with `distributionSha256Sum`), Android Gradle Plugin (`8.7.3` → `9.5.1` with built-in Kotlin), Kotlin Compose compiler plugin (`2.0.21` → `2.4.21`), `compileSdk` (`35` → `37`, retaining `minSdk = 26` and `targetSdk = 35`), `androidx.compose:compose-bom` (`2026.09.00`), `androidx.core:core-ktx` (`1.19.1`), `androidx.lifecycle` (`2.11.0`), `androidx.activity:activity-compose` (`1.13.0`), `androidx.window:window` (`1.5.1`), and `kotlinx-coroutines-android` (`1.11.0`).
+
+### Localization
+- **ViewModel String Externalization (`Pm5ViewModel.kt`, `strings.xml`):** Moved all `Pm5ViewModel` status banners, operation statuses, HF format descriptions, and vault export error messages into `strings.xml`, including `<plurals>` resources `status_testing_passwords` and `status_vault_exported`.
+
+---
+
 ## [1.0.2] - 2026-11-15 (`versionCode 10002`)
 
 ### Security

@@ -1,0 +1,4 @@
+v1.0.3 Toolchain, Debug Hook & Localization Release:
+- Upgraded build toolchain to Gradle 9.9.1, AGP 9.5.1 (built-in Kotlin), Kotlin Compose 2.4.21, compileSdk 37, and AndroidX / Compose BOM 2026.09.00.
+- Gated debug-only broadcast hooks with android.permission.DUMP (stripped from release APK) and parameterized capture_demo.sh device IDs.
+- Externalized ViewModel status banners and plural strings to strings.xml.
