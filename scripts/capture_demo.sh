@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Repeatable Live Hardware Demo & Screenshot Capture Script
 # Hardware:
-#   - Android device over ADB (Galaxy Z Fold 6, RFCY80A7WVL)
+#   - Android device over ADB (Galaxy Z Fold 7, RFCY80A7WVL)
 #   - Battery-powered Proxmark5 BWM connected over BLE (58:2A:BD:XX:XX:XX)
 #   - Proxmark3 Easy connected over USB (/dev/ttyACM0)
 set -euo pipefail
@@ -11,6 +11,7 @@ MEDIA_DIR="${REPO_ROOT}/docs/media"
 RAW_DIR="${REPO_ROOT}/build/demo_raw"
 FASTLANE_SHOTS="${REPO_ROOT}/fastlane/metadata/android/en-US/images/phoneScreenshots"
 SERIAL="${ADB_SERIAL:-RFCY80A7WVL}"
+APP_PKG="${APP_PKG:-com.proxmark5.client.debug}"
 PM3_BIN="${PM3_BIN:-/home/Boogus/proxmark3/pm3}"
 
 COVER_DISPLAY="4630946872173396372"
@@ -25,7 +26,7 @@ adb_cmd() {
 send_action() {
     local act="$1"
     shift
-    adb_cmd shell am broadcast -a "com.proxmark5.client.${act}" "$@" >/dev/null
+    adb_cmd shell am broadcast -a "com.proxmark5.client.${act}" -p "${APP_PKG}" "$@" >/dev/null
 }
 
 echo "[1/6] Checking connected hardware..."
@@ -50,7 +51,7 @@ adb_cmd shell am broadcast -a com.android.systemui.demo -e command network -e wi
 adb_cmd shell am broadcast -a com.android.systemui.demo -e command notifications -e visible false >/dev/null
 
 echo "[3/6] Ensuring app is running and connected to Proxmark5 over BLE..."
-adb_cmd shell am start -n com.proxmark5.client/.MainActivity >/dev/null
+adb_cmd shell am start -n "${APP_PKG}/com.proxmark5.client.MainActivity" >/dev/null
 sleep 2
 send_action "CONNECT_FIRST"
 sleep 3
@@ -166,7 +167,7 @@ echo "  -> Scene 6: Unfolded Foldable Adaptive Workspace..."
 adb_cmd shell cmd device_state state 3
 sleep 2
 adb_cmd shell input keyevent KEYCODE_WAKEUP
-adb_cmd shell am start -n com.proxmark5.client/.MainActivity >/dev/null
+adb_cmd shell am start -n "${APP_PKG}/com.proxmark5.client.MainActivity" >/dev/null
 sleep 1
 send_action "SWITCH_TAB" --ei tab 0
 sleep 1

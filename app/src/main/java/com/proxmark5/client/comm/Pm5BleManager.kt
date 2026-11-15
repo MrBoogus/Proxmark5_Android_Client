@@ -460,7 +460,7 @@ class Pm5BleManager(
     // --- Disconnect & Cleanup ---
 
     @SuppressLint("MissingPermission")
-    suspend fun disconnect() = withContext(Dispatchers.IO) {
+    private fun closeTransportsInternal() {
         tcpReadJob?.cancel()
         tcpReadJob = null
         try { tcpInStream?.close() } catch (_: Exception) {}
@@ -477,6 +477,11 @@ class Pm5BleManager(
         bluetoothGatt = null
         dataCharacteristic = null
 
+        pendingTransaction?.cancel()
+        pendingTransaction = null
+        writeCompletionDeferred?.complete(false)
+        writeCompletionDeferred = null
+
         frameParser.reset()
         isWatchingHid = false
         isWatchingEm4100 = false
@@ -484,7 +489,20 @@ class Pm5BleManager(
         isWatchingIo = false
         _batteryFlow.value = null
         _connectionState.value = ConnectionState.Disconnected
+    }
+
+    suspend fun disconnect() = withContext(Dispatchers.IO) {
+        closeTransportsInternal()
         scope.launch { _logFlow.emit("[COMM] Disconnected") }
+    }
+
+    /**
+     * Synchronous resource cleanup safe to invoke from ViewModel.onCleared()
+     * once viewModelScope is being cancelled.
+     */
+    fun shutdown() {
+        stopScan(scanAdapter)
+        closeTransportsInternal()
     }
 
     // --- Outbound Packet Transmission ---

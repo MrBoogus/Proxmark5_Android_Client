@@ -1,0 +1,4 @@
+v1.0.2 Security & Build Release:
+- Migrated encrypted tag vault from deprecated security-crypto to native AndroidKeyStore AES-256-GCM with atomic writes and non-destructive error preservation.
+- Replaced vault JSON clipboard dump with SAF file export and EXTRA_IS_SENSITIVE UID copies.
+- Removed lockscreen bypass, added exit BLE/TCP disconnect, and upgraded to Android 15 (targetSdk 35) edge-to-edge with R8 shrinking and externalized strings.

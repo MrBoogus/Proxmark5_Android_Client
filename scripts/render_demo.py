@@ -277,7 +277,7 @@ def main():
             "title": "BLE GATT Link, Fuel Gauge & Smart Antenna",
             "subtitle": "Direct BLE connection to untethered battery-powered Proxmark5 BWM",
             "opcodes": [
-                "GATT Service: 0xFFE0  |  Char: 0xAE88 (Write + Notify, MTU 256)",
+                "GATT Service: 0xAE86  |  Char: 0xAE88 (Write + Notify, MTU 256)",
                 "TX >> CMD_PM5_BWM_GET_BATTERY (0x0184) [10B PM3a frame]",
                 "RX << CMD_PM5_BWM_GET_BATTERY (0x0184) [19B BQ27427 payload]",
                 "      SoC: 69%  |  Volt: 3805 mV  |  Curr: -231 mA  |  Temp: 31.0 C",
@@ -394,16 +394,16 @@ def main():
             "title": "Real-Time Protocol Console & Diagnostics",
             "subtitle": "Live color-coded TX/RX frame monitor and asynchronous Dbprintf logs",
             "opcodes": [
-                "TX >> CMD_PING (0x0109) [32B echo payload, CRC-16/X-25]",
+                "TX >> CMD_PING (0x0109) [32B echo payload, CRC-16/ISO14443-A]",
                 "RX << CMD_PING (0x0109) [status=0, 32B verified in 39 ms]",
                 "TX >> CMD_PM5_BWM_GET_BATTERY (0x0184) -> 69%, 3805mV, -231mA",
                 "TX >> CMD_FPC_READ_I2C (0x0171)        -> I2C 0x51 Reg 0x02 = 0x87",
                 "RX << CMD_STATUS (0x0100)              -> Live firmware Dbprintf()",
-                "CRC-16/X-25: poly=0x1021, init=0xFFFF, refin/out=true, xor=0xFFFF",
+                "CRC-16/ISO14443-A: poly=0x1021, init=0xC6C6, refin/out=true, xor=0x0000",
             ],
             "term": [
                 "[+] Console: Sending CMD_PING (0x0109) 32-byte echo test...",
-                "[+] PING OK: 32 bytes echoed in 39ms (CRC-16/X-25 valid)",
+                "[+] PING OK: 32 bytes echoed in 39ms (CRC-16/ISO14443-A valid)",
                 "[+] Console: Querying BQ27427 fuel gauge (0x0184)...",
                 "[+] Battery: SoC=69%, 3805mV, -231mA, 31.0C",
                 "[+] Console: Reading Smart Antenna I2C 0x51 (0x0171)...",
@@ -420,7 +420,7 @@ def main():
             "vh": 976,
             "badge": "SCENE 6 / 7  •  FOLDABLE & TABLET",
             "title": "Adaptive Foldable NavigationRail & 2-Column Layout",
-            "subtitle": "Seamless posture transition on Galaxy Z Fold 6 (screenWidthDp >= 600dp)",
+            "subtitle": "Seamless posture transition on Galaxy Z Fold 7 (screenWidthDp >= 600dp)",
             "opcodes": [
                 "Folded Cover Screen (1080x2520): ScrollableTabRow + 1-col stack",
                 "Unfolded Inner Display (1968x2184): NavigationRail + 2-col workspace",

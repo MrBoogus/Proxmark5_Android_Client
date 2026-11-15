@@ -10,17 +10,26 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       EXPECTED_CERT_SHA256: "64e513e62f287c446bf0d3b5acdf282e54cb9eb8182524c2d686d48ee39ffab4"
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -29,8 +38,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Configure Release Signing Keystore from Secrets
-        if: github.event_name != 'pull_request'
+      - name: Configure Release Signing Keystore from Secrets (Tag Releases Only)
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -53,14 +62,14 @@ jobs:
 
       - name: Run Unit Tests, Lint & Build APKs
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            ./gradlew testDebugUnitTest lint assembleDebug
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" = "true" ]; then
+            ./gradlew testDebugUnitTest lint assembleDebug assembleRelease --stacktrace
           else
-            ./gradlew testDebugUnitTest lint assembleDebug assembleRelease
+            ./gradlew testDebugUnitTest lint assembleDebug --stacktrace
           fi
 
-      - name: Verify Release APK Signer Fingerprint & Package Assets
-        if: github.event_name != 'pull_request'
+      - name: Verify Release APK Signer Fingerprint & Package Assets (Tag Releases Only)
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           APK_PATH="app/build/outputs/apk/release/app-release.apk"
           APKSIGNER="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner | sort -V | tail -n 1)"
@@ -71,14 +80,14 @@ jobs:
             exit 1
           fi
           mkdir -p dist
-          VERSION="${GITHUB_REF_NAME:-dev}"
+          VERSION="${GITHUB_REF_NAME}"
           cp "$APK_PATH" "dist/Proxmark5-Android-Client-${VERSION}-release.apk"
           (cd dist && sha256sum "Proxmark5-Android-Client-${VERSION}-release.apk" > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload Signed Release APK Artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+      - name: Upload Signed Release APK Artifact (Tag Releases Only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Proxmark5-Android-Client-Release
           path: dist/*
@@ -86,12 +95,12 @@ jobs:
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
       - name: Download Verified Release Assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: Proxmark5-Android-Client-Release
           path: dist

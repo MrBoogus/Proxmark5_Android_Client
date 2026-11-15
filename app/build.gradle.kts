@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -27,20 +28,25 @@ if (isReleaseSigningRequested && !keystorePropsFile.exists()) {
 
 android {
     namespace = "com.proxmark5.client"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.proxmark5.client"
         minSdk = 26
-        targetSdk = 34
-        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.1 -> 10001)
-        versionCode = 10001
-        versionName = "1.0.1"
+        targetSdk = 35
+        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.2 -> 10002)
+        versionCode = 10002
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     signingConfigs {
@@ -56,7 +62,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -82,10 +89,6 @@ android {
         buildConfig = true
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.11"
-    }
-
     lint {
         abortOnError = true
         checkReleaseBuilds = true
@@ -99,13 +102,12 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.security:security-crypto:1.0.0")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.activity:activity-compose:1.9.3")
 
-    val composeBom = platform("androidx.compose:compose-bom:2024.04.01")
+    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -114,10 +116,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Adaptive / Foldable Window Support
-    implementation("androidx.window:window:1.2.0")
+    implementation("androidx.window:window:1.3.0")
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     // Unit testing
     testImplementation("junit:junit:4.13.2")

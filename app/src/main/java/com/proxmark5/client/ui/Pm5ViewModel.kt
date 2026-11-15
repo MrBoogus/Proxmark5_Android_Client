@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.net.Uri
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -17,6 +18,7 @@ import com.proxmark5.client.comm.T55xxReadResult
 import com.proxmark5.client.comm.VersionInfo
 import com.proxmark5.client.data.CapturedTag
 import com.proxmark5.client.data.TagStorageManager
+import com.proxmark5.client.data.VaultResult
 import com.proxmark5.client.protocol.DecodedBadge
 import com.proxmark5.client.protocol.Em4100Decoder
 import com.proxmark5.client.protocol.Em4100Tag
@@ -103,6 +105,7 @@ data class Pm5UiState(
 
     // Saved Vault & Console Logs
     val savedTags: List<CapturedTag> = emptyList(),
+    val vaultError: String? = null,
     val logs: List<String> = emptyList()
 )
 
@@ -208,8 +211,8 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.value = _uiState.value.copy(lastEm4100Tag = em)
                     }
                 }
-                // Save to Vault
-                storageManager.save(
+                // Save to Vault (runs off main thread via TagStorageManager)
+                val vaultRes = storageManager.save(
                     CapturedTag(
                         uidHex = badge.uidHex,
                         technology = badge.technology,
@@ -219,7 +222,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                         formatDescription = badge.formatLen
                     )
                 )
-                loadSavedTags()
+                applyVaultResult(vaultRes)
             }
         }
 
@@ -230,8 +233,8 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                     lastHfCard = card,
                     statusBanner = "HF Card Detected: ${card.cardType} [${card.uidHex}]"
                 )
-                // Save to Vault
-                storageManager.save(
+                // Save to Vault (runs off main thread via TagStorageManager)
+                val vaultRes = storageManager.save(
                     CapturedTag(
                         uidHex = card.uidHex,
                         technology = card.cardType,
@@ -239,7 +242,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                         formatDescription = "SAK: 0x${card.sakHex}, ATQA: ${card.atqaHex}"
                     )
                 )
-                loadSavedTags()
+                applyVaultResult(vaultRes)
             }
         }
     }
@@ -778,19 +781,88 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Saved Tags ---
 
+    private fun applyVaultResult(result: VaultResult) {
+        when (result) {
+            is VaultResult.Success -> {
+                _uiState.value = _uiState.value.copy(
+                    savedTags = result.tags,
+                    vaultError = null
+                )
+            }
+            is VaultResult.Error -> {
+                _uiState.value = _uiState.value.copy(
+                    savedTags = result.cachedTags,
+                    vaultError = result.message,
+                    statusBanner = result.message
+                )
+            }
+        }
+    }
+
     private fun loadSavedTags() {
-        _uiState.value = _uiState.value.copy(savedTags = storageManager.loadAll())
+        viewModelScope.launch {
+            applyVaultResult(storageManager.loadAll())
+        }
     }
 
     fun deleteTag(id: String) {
-        _uiState.value = _uiState.value.copy(savedTags = storageManager.delete(id))
+        viewModelScope.launch {
+            applyVaultResult(storageManager.delete(id))
+        }
     }
 
     fun clearVault() {
-        _uiState.value = _uiState.value.copy(savedTags = storageManager.clear())
+        viewModelScope.launch {
+            applyVaultResult(storageManager.clear())
+        }
     }
 
-    fun exportVaultJson(): String {
-        return storageManager.exportJson()
+    fun exportVaultToUri(uri: Uri) {
+        viewModelScope.launch {
+            val exportRes = storageManager.exportJson()
+            exportRes.fold(
+                onSuccess = { json ->
+                    val writeResult = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val bytes = json.toByteArray(Charsets.UTF_8)
+                            getApplication<Application>().contentResolver
+                                .openOutputStream(uri, "wt")
+                                ?.use { out ->
+                                    out.write(bytes)
+                                    out.flush()
+                                } ?: error("Unable to open destination document")
+                            bytes.size
+                        }
+                    }
+                    writeResult.fold(
+                        onSuccess = { byteCount ->
+                            _uiState.value = _uiState.value.copy(
+                                statusBanner = "Exported vault JSON ($byteCount bytes)"
+                            )
+                        },
+                        onFailure = { err ->
+                            _uiState.value = _uiState.value.copy(
+                                statusBanner = "Vault export failed: ${err.message ?: "I/O error"}"
+                            )
+                        }
+                    )
+                },
+                onFailure = { err ->
+                    _uiState.value = _uiState.value.copy(
+                        vaultError = err.message,
+                        statusBanner = err.message ?: "Vault export failed"
+                    )
+                }
+            )
+        }
+    }
+
+    override fun onCleared() {
+        stopBatteryPolling()
+        autoScanJob?.cancel()
+        dictionaryJob?.cancel()
+        pm5Manager.stopScan(bluetoothAdapter)
+        pm5Manager.shutdown()
+        super.onCleared()
     }
 }

@@ -1,3 +1,206 @@
 <resources>
     <string name="app_name">Proxmark5</string>
+    <string name="brand_short">PM5</string>
+    <string name="brand_title">PROXMARK5</string>
+
+    <!-- Navigation & Status -->
+    <string name="tab_power_short">Power</string>
+    <string name="tab_power_full">⚡ Power &amp; HW</string>
+    <string name="tab_lf_short">LF Studio</string>
+    <string name="tab_lf_full">📡 LF Studio</string>
+    <string name="tab_hf_short">HF NFC</string>
+    <string name="tab_hf_full">💳 HF NFC</string>
+    <string name="tab_t55xx_short">T55xx</string>
+    <string name="tab_t55xx_full">💾 T55xx</string>
+    <string name="tab_vault_short">Vault</string>
+    <string name="tab_vault_full">🗃️ Vault</string>
+    <string name="tab_console_short">Console</string>
+    <string name="tab_console_full">⚡ Console</string>
+
+    <string name="btn_connect">Connect</string>
+    <string name="btn_disconnect">Disconnect</string>
+    <string name="status_connecting_short">Connecting</string>
+    <string name="status_connected_detail">● CONNECTED: %1$s (%2$s, MTU %3$d)</string>
+    <string name="status_connecting_detail">○ CONNECTING: %1$s</string>
+    <string name="status_negotiating_detail">○ NEGOTIATING: %1$s</string>
+    <string name="status_scanning_detail">○ SCANNING FOR PM5 BWM...</string>
+    <string name="status_error_detail">✕ %1$s</string>
+    <string name="status_offline_detail">○ OFFLINE (Tap Connect)</string>
+    <string name="rail_link_ok">LINK OK</string>
+    <string name="rail_link_offline">OFFLINE</string>
+    <string name="top_battery_chip">%1$d%% | %2$s | %3$s</string>
+
+    <!-- Dashboard: Battery & Power -->
+    <string name="title_battery_gauge">BWM BATTERY &amp; FUEL GAUGE</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="label_current">Current: %1$s</string>
+    <string name="metric_voltage">Voltage</string>
+    <string name="metric_temp">Temp</string>
+    <string name="metric_capacity">Capacity</string>
+    <string name="metric_health">Health</string>
+    <string name="capacity_mah_fmt">%1$d / %2$d mAh</string>
+    <string name="percent_fmt">%1$d%%</string>
+    <string name="awaiting_battery_telemetry">Awaiting battery telemetry (CMD_PM5_BWM_GET_BATTERY)...</string>
+    <string name="connect_battery_prompt">Connect PM5 to inspect battery telemetry</string>
+    <string name="btn_charge_on">Charge ON</string>
+    <string name="btn_charge_off">Charge OFF</string>
+    <string name="btn_charge_safe_41v">4.1V Safe</string>
+
+    <!-- Dashboard: Swappable Antenna Controller -->
+    <string name="title_antenna_controller">SWAPPABLE ANTENNA (I2C 0x51)</string>
+    <string name="btn_read">Read</string>
+    <string name="desc_antenna_controller">Controls physical blue LEDs, frequency &amp; Q-factor on the swappable antenna PCB</string>
+    <string name="title_antenna_leds">ANTENNA BLUE LEDs</string>
+    <string name="label_lf_blue_led">LF Blue LED</string>
+    <string name="label_hf_blue_led">HF Blue LED</string>
+    <string name="btn_leds_off">Turn Both Blue LEDs OFF</string>
+    <string name="btn_leds_on">Turn Both Blue LEDs ON</string>
+    <string name="label_freq_select">FREQ SELECT</string>
+    <string name="label_high_q">High Q</string>
+    <string name="label_low_q">Low Q</string>
+    <string name="freq_125k">125 kHz</string>
+    <string name="freq_134k">134 kHz</string>
+    <string name="freq_250k">250 kHz</string>
+    <string name="freq_375k">375 kHz</string>
+    <string name="freq_500k">500 kHz</string>
+    <string name="label_reg_02_fmt">Reg 0x02: 0x%1$02X</string>
+    <string name="label_active_freq_q">Active: %1$s | Q:%2$s</string>
+    <string name="label_q_short_high">High</string>
+    <string name="label_q_short_low">Low</string>
+    <string name="label_none">None</string>
+
+    <!-- Dashboard: RGB, Resonance Sweep, QC & Architecture -->
+    <string name="title_antenna_rgb">ANTENNA RGB LED (I2C 0x48)</string>
+    <string name="desc_antenna_rgb">Controls swappable antenna RGB LED via CMD_PM5_RGB_SET</string>
+    <string name="color_cyan">Cyan</string>
+    <string name="color_green">Green</string>
+    <string name="color_purple">Purple</string>
+    <string name="color_amber">Amber</string>
+    <string name="color_red">Red</string>
+    <string name="color_white">White</string>
+    <string name="color_off">OFF</string>
+
+    <string name="title_antenna_resonance">ANTENNA RESONANCE (TUNE)</string>
+    <string name="btn_measure_sweep">Measure Sweep</string>
+    <string name="voltage_v_fmt">%1$.2f V</string>
+    <string name="metric_peak_divisor">Peak Divisor</string>
+    <string name="sweeping_frequencies">Sweeping frequencies (takes ~12s)...</string>
+    <string name="no_tuning_sweep">No tuning sweep measured yet</string>
+
+    <string name="title_hardware_qc">HARDWARE QC SELF-TEST</string>
+    <string name="btn_run_self_test">Run Self-Test</string>
+    <string name="qc_passed">DIAGNOSTIC PASSED</string>
+    <string name="qc_failed">DIAGNOSTIC FAILED</string>
+    <string name="desc_hardware_qc">Tests Antenna controller (I2C 0x51), Mainboard RGB (0x48), buzzers, and LEDs.</string>
+
+    <string name="title_architecture">PROXMARK5 ARCHITECTURE</string>
+    <string name="desc_architecture">• MCU: AT32F435 (288 MHz ARM Cortex-M4, Fast ASK Demod)\n• FPGA: Gowin Semi\n• Wireless: ESP32-C2 (BWM BLE &amp; WiFi STA/TCP)\n• Charger: AW32001E | Fuel Gauge: BQ27427</string>
+    <string name="label_firmware_version">Firmware: %1$s</string>
+
+    <!-- LF Badge Studio -->
+    <string name="title_auto_demod">AUTO-DEMODULATOR SCANNER</string>
+    <string name="desc_auto_demod">Cycles HID, EM4100, AWID, IO Prox</string>
+    <string name="btn_stop_scan">STOP SCAN</string>
+    <string name="btn_start_auto_scan">START AUTO-SCAN</string>
+    <string name="watch_hid">HID</string>
+    <string name="watch_em4100">EM4100</string>
+    <string name="watch_awid">AWID</string>
+    <string name="watch_io">IO</string>
+    <string name="metric_card_number">Card Number</string>
+    <string name="metric_facility_code">Facility Code</string>
+    <string name="metric_format">Format</string>
+    <string name="label_standard">Standard</string>
+    <string name="label_dash">—</string>
+    <string name="btn_clone_to_t5577">Clone to Transponder (T5577)</string>
+
+    <string name="title_em4100_frame">EM4100 64-BIT FRAME STRUCTURE</string>
+    <string name="label_standard_fmt">Standard: %1$s</string>
+    <string name="label_parity_valid">Parity Check: Even Horizontal &amp; Column Parity Valid</string>
+
+    <string name="title_manual_clone">MANUAL TRANSPONDER CLONING</string>
+    <string name="hint_uid_10hex">10-Hex UID (e.g. 0102030405)</string>
+    <string name="chip_t5577">T5577</string>
+    <string name="chip_q5">Q5</string>
+    <string name="chip_em4305">EM4305</string>
+    <string name="btn_write_clone">WRITE CLONE TO CARD</string>
+
+    <!-- HF NFC Studio -->
+    <string name="title_iso14443a">ISO 14443-A (HF 13.56 MHz)</string>
+    <string name="desc_iso14443a">MIFARE Classic, Ultralight, NTAG, DESFire</string>
+    <string name="btn_read_14443a">READ 14443A</string>
+    <string name="metric_uid_length">UID Length</string>
+    <string name="uid_bytes_fmt">%1$d Bytes</string>
+    <string name="metric_atqa">ATQA</string>
+    <string name="metric_sak">SAK</string>
+    <string name="metric_ats">ATS / Historical</string>
+    <string name="hex_prefix_fmt">0x%1$s</string>
+    <string name="title_hf_inspector_ready">CARD INSPECTOR READY</string>
+    <string name="desc_hf_inspector_ready">Present a 13.56 MHz ISO 14443-A card or emulator to the PM5 coil and tap READ 14443A to inspect UID, ATQA, SAK, and ATS.</string>
+
+    <!-- T55xx Transponder Suite -->
+    <string name="title_t55xx_map">T55XX BLOCK MAP (0 - 7)</string>
+    <string name="desc_t55xx_map">AT32 Fast MCU Demodulation Enabled</string>
+    <string name="btn_read_all_blocks">READ ALL (0-7)</string>
+    <string name="label_config_b0_fmt">Config [B0]: %1$s</string>
+    <string name="label_blk_fmt">Blk %1$d: %2$s</string>
+    <string name="title_write_block_fmt">WRITE BLOCK %1$d</string>
+    <string name="hint_block_data_hex">Data (8-Hex e.g. 00148040)</string>
+    <string name="hint_password_hex">Password (8-Hex)</string>
+    <string name="btn_write">WRITE</string>
+    <string name="title_password_audit">PASSWORD AUDIT &amp; CRACKER</string>
+    <string name="btn_cancel_audit">CANCEL AUDIT</string>
+    <string name="btn_dictionary_audit">DICTIONARY AUDIT</string>
+    <string name="btn_white_cloner_key">WHITE CLONER KEY</string>
+
+    <!-- Tag Vault -->
+    <string name="title_saved_tags_fmt">SAVED BADGES &amp; TAGS (%1$d)</string>
+    <string name="btn_export_json">Export JSON</string>
+    <string name="default_vault_export_filename">proxmark5_vault.json</string>
+    <string name="vault_empty_message">No saved tags yet.\nScan an LF badge or HF card to save it here automatically.</string>
+    <string name="vault_tag_detail_fmt">Card: %1$s | FC: %2$s | %3$s</string>
+    <string name="toast_copied_uid">Copied UID: %1$s</string>
+    <string name="label_sensitive_uid">Proxmark5 Tag UID</string>
+
+    <!-- Console -->
+    <string name="title_comm_terminal">COMMUNICATION TERMINAL</string>
+    <string name="btn_batt">BATT</string>
+    <string name="btn_ant_cfg">ANT CFG</string>
+    <string name="btn_ping">PING</string>
+    <string name="btn_break">BREAK</string>
+
+    <!-- Device Picker Dialog -->
+    <string name="title_connect_pm5">CONNECT PROXMARK5</string>
+    <string name="label_ble_devices">BLE Devices</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_scan">Scan</string>
+    <string name="btn_paired">Paired</string>
+    <string name="no_pm5_found_yet">No Proxmark5 found yet. Tap \'Scan\' to search over BLE.</string>
+    <string name="label_unknown_device">Unknown</string>
+    <string name="label_wifi_tcp_alt">Or Connect over WiFi TCP (BWM STA)</string>
+    <string name="hint_ip">IP</string>
+    <string name="hint_port">Port</string>
+    <string name="btn_tcp">TCP</string>
+
+    <!-- Accessibility Content Descriptions -->
+    <string name="cd_battery_status">Battery status</string>
+    <string name="cd_battery_gauge">Battery gauge</string>
+    <string name="cd_refresh_battery">Refresh battery telemetry</string>
+    <string name="cd_antenna_controller">Smart antenna controller</string>
+    <string name="cd_read_antenna">Read antenna configuration</string>
+    <string name="cd_rgb_led">Antenna RGB LED control</string>
+    <string name="cd_antenna_tune">Antenna resonance tuning</string>
+    <string name="cd_hardware_qc">Hardware QC self-test</string>
+    <string name="cd_diagnostic_passed">Diagnostic passed</string>
+    <string name="cd_diagnostic_failed">Diagnostic failed</string>
+    <string name="cd_bluetooth_connect">Connect via Bluetooth</string>
+    <string name="cd_start_scan">Start or stop auto scan</string>
+    <string name="cd_scan_hf">Read ISO 14443-A card</string>
+    <string name="cd_clone_tag">Clone tag UID</string>
+    <string name="cd_export_vault">Export encrypted vault to JSON file</string>
+    <string name="cd_copy_uid">Copy tag UID to clipboard</string>
+    <string name="cd_delete_tag">Delete saved tag</string>
+    <string name="cd_close_dialog">Close connection dialog</string>
+    <string name="cd_device_proxmark">Proxmark5 device</string>
+    <string name="cd_device_bluetooth">Bluetooth device</string>
+    <string name="cd_selected">Selected</string>
 </resources>

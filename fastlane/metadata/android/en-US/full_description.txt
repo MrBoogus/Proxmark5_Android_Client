@@ -1,6 +1,6 @@
 Proxmark5 Android Client is a native Kotlin and Jetpack Compose hardware studio for the Proxmark5 (AT32F435 + Gowin FPGA) equipped with the ESP32-C2 Battery / Wireless Module (BWM).
 
-Rather than wrapping the full desktop pm3 CLI, it talks the binary PM3a / PM3b Next-Gen (NG) wire protocol directly over Bluetooth Low Energy (GATT service 0xAE86 / characteristic 0xAE88) and Wi-Fi TCP (:18888) with CRC-16/X-25 verification.
+Rather than wrapping the full desktop pm3 CLI, it talks the binary PM3a / PM3b Next-Gen (NG) wire protocol directly over Bluetooth Low Energy (GATT service 0xAE86 / characteristic 0xAE88) and Wi-Fi TCP (:18888) with CRC-16/ISO14443-A verification.
 
 Features:
 • Power & Smart Antenna Dashboard: Live BQ27427 fuel-gauge and AW32001E charger telemetry (SoC, mV, mA, temperature, health), swappable antenna I2C 0x51 Register 0x02 capacitor bank & LED control, WS2812 RGB indicator (I2C 0x48), and LF/HF resonance tuning sweep.

@@ -14,25 +14,32 @@ on:
 
 permissions:
   contents: read
-  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify-wire-contract:
     name: Verify Upstream PM5 Wire Contract (C11 ABI)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      drift_detected: ${{ steps.verify.outputs.drift_detected }}
     steps:
       - name: Checkout Android Client
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Run Self-Test & Verify Upstream Wire Contracts
         id: verify
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
           OVERALL_STATUS=0
-          COMBINED_REPORT=$(mktemp)
+          COMBINED_REPORT="${RUNNER_TEMP}/upstream_contract_report.md"
           echo "# Upstream Proxmark5 Wire Protocol Contract Report" > "$COMBINED_REPORT"
           echo "" >> "$COMBINED_REPORT"
 
@@ -81,7 +88,6 @@ jobs:
           done
 
           cat "$COMBINED_REPORT" >> "$GITHUB_STEP_SUMMARY"
-          cp "$COMBINED_REPORT" /tmp/upstream_contract_report.md
 
           if [ "$OVERALL_STATUS" -ne 0 ]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
@@ -89,33 +95,54 @@ jobs:
             echo "drift_detected=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload Contract Report Artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: upstream-contract-report
+          path: ${{ runner.temp }}/upstream_contract_report.md
+          retention-days: 7
+
+  manage-drift-issue:
+    name: Manage Upstream Drift Issue
+    needs: verify-wire-contract
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download Contract Report Artifact
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: upstream-contract-report
+          path: ${{ runner.temp }}
+
       - name: Open or Update Drift Alert Issue (Only on Breaking Change)
-        if: steps.verify.outputs.drift_detected == 'true'
+        if: needs.verify-wire-contract.outputs.drift_detected == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LABEL="upstream-protocol-drift"
           gh label create "$LABEL" --color "D93F0B" --description "Breaking wire protocol change in upstream proxmark3" --force || true
 
-          EXISTING_ISSUE=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          EXISTING_ISSUE=$(gh issue list -R "$GITHUB_REPOSITORY" --label "$LABEL" --state open --json number --jq '.[0].number // empty')
           TITLE="🚨 Upstream Proxmark5 Wire Protocol Drift Detected"
 
           if [ -n "$EXISTING_ISSUE" ]; then
-            gh issue edit "$EXISTING_ISSUE" --title "$TITLE" --body-file /tmp/upstream_contract_report.md
+            gh issue edit "$EXISTING_ISSUE" -R "$GITHUB_REPOSITORY" --title "$TITLE" --body-file "${RUNNER_TEMP}/upstream_contract_report.md"
             echo "Updated existing drift issue #$EXISTING_ISSUE"
           else
-            gh issue create --title "$TITLE" --label "$LABEL" --body-file /tmp/upstream_contract_report.md
+            gh issue create -R "$GITHUB_REPOSITORY" --title "$TITLE" --label "$LABEL" --body-file "${RUNNER_TEMP}/upstream_contract_report.md"
           fi
           exit 1
 
       - name: Auto-Close Drift Issue When Resolved
-        if: steps.verify.outputs.drift_detected == 'false'
+        if: needs.verify-wire-contract.outputs.drift_detected == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           LABEL="upstream-protocol-drift"
-          EXISTING_ISSUE=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          EXISTING_ISSUE=$(gh issue list -R "$GITHUB_REPOSITORY" --label "$LABEL" --state open --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING_ISSUE" ]; then
-            gh issue comment "$EXISTING_ISSUE" --body "✅ All upstream C11 wire protocol assertions are now passing. Closing issue automatically."
-            gh issue close "$EXISTING_ISSUE"
+            gh issue comment "$EXISTING_ISSUE" -R "$GITHUB_REPOSITORY" --body "✅ All upstream C11 wire protocol assertions are now passing. Closing issue automatically."
+            gh issue close "$EXISTING_ISSUE" -R "$GITHUB_REPOSITORY"
           fi

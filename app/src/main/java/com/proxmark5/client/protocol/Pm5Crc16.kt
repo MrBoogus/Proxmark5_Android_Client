@@ -1,7 +1,7 @@
 package com.proxmark5.client.protocol
 
 /**
- * ISO 14443-A CRC-16 calculation matching Proxmark Iceman firmware:
+ * CRC-16/ISO14443-A calculation matching Proxmark Iceman firmware:
  * - Polynomial: 0x1021 (CCITT)
  * - Initial: 0xC6C6
  * - Refin: true (reflected input byte)

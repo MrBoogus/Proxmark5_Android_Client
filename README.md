@@ -60,17 +60,17 @@ All screenshots and the live `demo.mp4` / `demo.gif` in this repository were cap
 
 1. **Proxmark5 BWM** running untethered on internal Li-Po battery (`Iceman/master v4.23346+`), paired over BLE (`58:2A:BD:XX:XX:XX`) to the Android device.
 2. **Proxmark3 Easy (512 KB)** connected over USB (`/dev/ttyACM0`) to the host workstation and placed facing the PM5 coil to act as a controlled RF signal generator and tag emulator (`hf 14a sim -t 1 -u 11223344`, `hf 14a sim -t 3 -u 04AABBCCDDEE11`, `lf tune`). Only synthetic test UIDs were used.
-3. **Samsung Galaxy Z Fold 6 (`SM-F966B`, Android 15)** connected to the workstation via `adb`, recorded in both folded cover posture (`1080×2520`) and unfolded tablet posture (`1968×2184`) with Android SystemUI Demo Mode enabled for a clean status bar.
+3. **Samsung Galaxy Z Fold 7 (`SM-F966B`, Android 15)** connected to the workstation via `adb`, recorded in both folded cover posture (`1080×2520`) and unfolded tablet posture (`1968×2184`) with Android SystemUI Demo Mode enabled for a clean status bar.
 
 ---
 
 ## Supported Hardware, Firmware & Android Requirements
 
-- **Proxmark Hardware:** Proxmark5 with the **BWM (Bluetooth & Wi-Fi Module)** add-on (`Proxmark5` BLE peripheral or `192.168.4.1:8888` AP).
+- **Proxmark Hardware:** Proxmark5 with the **BWM (Bluetooth & Wi-Fi Module)** add-on (`Proxmark5` BLE peripheral or `192.168.4.1:18888` AP).
 - **Proxmark Firmware:** Recent `RfidResearchGroup/proxmark3` (**Iceman fork**) supporting `PM3a` (`COMMANDNG`) binary frames.
   - Works out of the box with standard stock Iceman firmware flashed onto a Proxmark5.
   - An automated weekly GitHub Actions workflow ([`.github/workflows/watch-upstream.yml`](.github/workflows/watch-upstream.yml)) compiles upstream RRG/Iceman headers against 178 C11 `_Static_assert` checks ([`.github/scripts/verify_upstream_contract.py`](.github/scripts/verify_upstream_contract.py)) to detect any upstream wire-protocol drift.
-- **Android Version:** **Android 8.0 Oreo (`minSdk 26`) through Android 14/15 (`targetSdk 34`)**.
+- **Android Version:** **Android 8.0 Oreo (`minSdk 26`) through Android 15 (`targetSdk 35`)**.
 
 ### Required Android Permissions
 
@@ -80,7 +80,7 @@ All screenshots and the live `demo.mp4` / `demo.gif` in this repository were cap
 | `BLUETOOTH_CONNECT` | API 31+ (Android 12+) | Connect to paired or discovered `Proxmark5` devices and exchange GATT packets on characteristic `0xAE88`. |
 | `BLUETOOTH` / `BLUETOOTH_ADMIN` | API 26–30 (Android 8–11) | Legacy Bluetooth discovery and GATT connection on Android 8–11. |
 | `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | API 26–30 (`maxSdkVersion="30"`) | Required by the Android OS on API 26–30 to return BLE scan results. Not requested on Android 12+. |
-| `INTERNET` / `ACCESS_NETWORK_STATE` | All | Optional TCP socket transport to the Proxmark5 BWM Wi-Fi AP (`192.168.4.1:8888`). The app makes zero external network requests. |
+| `INTERNET` / `ACCESS_NETWORK_STATE` | All | Optional TCP socket transport to the Proxmark5 BWM Wi-Fi AP (`192.168.4.1:18888`). The app makes zero external network requests. |
 
 ---
 
@@ -88,14 +88,14 @@ All screenshots and the live `demo.mp4` / `demo.gif` in this repository were cap
 
 ### Option 1: Install Prebuilt Signed APK (Recommended)
 
-1. Download `Proxmark5-Android-Client-v1.0.1-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
+1. Download `Proxmark5-Android-Client-v1.0.2-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
 2. Verify the SHA-256 checksum:
    ```bash
    sha256sum -c SHA256SUMS.txt
    ```
 3. Install on your Android device via `adb` or by opening the APK on your phone:
    ```bash
-   adb install -r Proxmark5-Android-Client-v1.0.1-release.apk
+   adb install -r Proxmark5-Android-Client-v1.0.2-release.apk
    ```
 
 ### Option 2: Build from Source
@@ -123,7 +123,7 @@ The resulting APKs are written to:
 
 | Feature | Status | Details |
 | :--- | :---: | :--- |
-| **BLE GATT Transport (`0xFFE0` / `0xAE88`)** | **Tested** | Auto-connects to bonded `Proxmark5`, negotiates MTU up to 512B, 240B chunked writes, and reassembles fragmented `PM3a` notifications. |
+| **BLE GATT Transport (`0xAE86` / `0xAE88`)** | **Tested** | Auto-connects to bonded `Proxmark5`, negotiates MTU up to 512B, 240B chunked writes, and reassembles fragmented `PM3a` notifications. |
 | **BQ27427 Battery Fuel Gauge & Power (`0x0184`, `0x0185`)** | **Tested** | Live State-of-Charge (`%`), voltage (`mV`), signed current (`mA`), temperature (`°C`), charging toggle, and inactivity sleep timer. |
 | **Smart Antenna Control (`I2C 0x51`, `0x0170` / `0x0171`)** | **Tested** | Independent LF/HF coil blue indicator LEDs, `125 kHz` vs `134 kHz` resonant capacitor switching, and Low-Q / High-Q (`+114%` voltage boost) control. |
 | **Live Antenna Resonance Sweep (`0x0400`)** | **Tested** | Real-time LF `125 kHz`, LF `134 kHz`, and HF `13.56 MHz` peak tank voltage measurement (`mV` -> `V`) and resonant divisor readout. |
@@ -132,21 +132,21 @@ The resulting APKs are written to:
 | **LF Watch Loops (`0x021C`, `0x020B`, `0x021A`, `0x0221`)** | **Tested** | Continuous polling for EM410x, HID Prox, IO Prox, and AWID with clean `CMD_BREAK_LOOP` (`0x0118`) termination and Wiegand facility/card decoding. |
 | **EM410x 64-Bit Manchester Matrix & Clone (`0x0211`)** | **Tested** | Interactive 64-bit Manchester frame visualizer (9-bit header, row/column even parity, stop bit) and 1-tap cloning to T55x7 / Q5. |
 | **T55xx Suite & White Cloner Keygen (`0x0214`..`0x0231`)** | **Tested** | Page 0 block 0–7 reader, single-block authenticated writer, 52-key password dictionary audit, and deterministic White Cloner password calculator. |
-| **Tag Vault & Protocol Console (`0x0100`, `0x0109`)** | **Tested** | Persistent local tag history with 1-tap JSON clipboard export, `CMD_PING` latency test, and live color-coded `Dbprintf` log viewer. |
+| **Tag Vault & Protocol Console (`0x0100`, `0x0109`)** | **Tested** | Persistent local tag history with SAF JSON file export (AndroidKeyStore AES-256-GCM encrypted at rest), `CMD_PING` latency test, and live color-coded `Dbprintf` log viewer. |
 | **Adaptive Foldable & Tablet UI** | **Tested** | Switches automatically between a 1-column `ScrollableTabRow` on phones/cover displays and a `NavigationRail` + 2-column dashboard on unfolded foldables/tablets (`screenWidthDp >= 600dp`). |
-| **Wi-Fi TCP Socket Bridge (`192.168.4.1:8888`)** | **Experimental** | Uses the same `PM3a` framing over a raw TCP socket when connected to the PM5 BWM Wi-Fi access point; primary field testing has focused on BLE. |
+| **Wi-Fi TCP Socket Bridge (`192.168.4.1:18888`)** | **Experimental** | Uses the same `PM3a` framing over a raw TCP socket when connected to the PM5 BWM Wi-Fi access point; primary field testing has focused on BLE. |
 
 ---
 
 ## Binary Wire Protocol Reference (`Pm5Constants.kt`)
 
-Every command exchanged between the app and the Proxmark5 uses the Iceman **COMMANDNG (`PM3a` / `PM3b`)** binary packet format with **CRC-16/X-25** (`poly=0x1021, init=0xFFFF, refin=true, refout=true, xorout=0xFFFF`).
+Every command exchanged between the app and the Proxmark5 uses the Iceman **COMMANDNG (`PM3a` / `PM3b`)** binary packet format with **CRC-16/ISO14443-A** (`poly=0x1021, init=0xC6C6, refin=true, refout=true, xorout=0x0000`).
 
 ### BLE GATT Profile
 
 | Entity | UUID | Role |
 | :--- | :--- | :--- |
-| **BWM GATT Service** | `0000ffe0-0000-1000-8000-00805f9b34fb` (`0xFFE0`) | Primary Proxmark5 BWM BLE service |
+| **BWM GATT Service** | `0000ae86-0000-1000-8000-00805f9b34fb` (`0xAE86`) | Primary Proxmark5 BWM BLE service |
 | **BWM Data Characteristic** | `0000ae88-0000-1000-8000-00805f9b34fb` (`0xAE88`) | Bidirectional **Write + Notify** channel for `PM3a`/`PM3b` frames |
 | **CCCD Descriptor** | `00002902-0000-1000-8000-00805f9b34fb` (`0x2902`) | Enables GATT notifications on `0xAE88` |
 

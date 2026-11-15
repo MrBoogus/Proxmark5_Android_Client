@@ -2,15 +2,17 @@ package com.proxmark5.client.ui
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.os.PersistableBundle
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,13 +22,19 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -35,69 +43,57 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
-import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ElectricBolt
-import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Nfc
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.VerticalDivider
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -108,24 +104,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.proxmark5.client.R
 import com.proxmark5.client.comm.ConnectionState
-import com.proxmark5.client.data.CapturedTag
-import com.proxmark5.client.protocol.DecodedBadge
-import com.proxmark5.client.protocol.Em4100Tag
-import com.proxmark5.client.protocol.Hf14aCard
-import com.proxmark5.client.protocol.Pm5AntennaTuning
-import com.proxmark5.client.protocol.Pm5BatteryInfo
-import com.proxmark5.client.protocol.Pm5Constants
-import com.proxmark5.client.protocol.T55xxBlockEntry
 import com.proxmark5.client.ui.theme.AccentOrange
 import com.proxmark5.client.ui.theme.CyberPurple
 import com.proxmark5.client.ui.theme.DarkOutline
@@ -141,8 +129,31 @@ import com.proxmark5.client.ui.theme.TextMuted
 import com.proxmark5.client.ui.theme.TextPrimary
 import com.proxmark5.client.ui.theme.TextSecondary
 import com.proxmark5.client.ui.theme.WarningAmber
+import com.proxmark5.client.protocol.Pm5Constants
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+private fun copySensitiveToClipboard(context: Context, label: String, value: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+    val sensitiveKey = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        ClipDescription.EXTRA_IS_SENSITIVE
+    } else {
+        "android.content.extra.IS_SENSITIVE"
+    }
+    val clip = ClipData.newPlainText(label, value).apply {
+        description.extras = PersistableBundle().apply {
+            putBoolean(sensitiveKey, true)
+        }
+    }
+    clipboard.setPrimaryClip(clip)
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        Toast.makeText(
+            context,
+            context.getString(R.string.toast_copied_uid, value),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Pm5AppScreen(viewModel: Pm5ViewModel) {
     val state by viewModel.uiState.collectAsState()
@@ -150,11 +161,15 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
     var showDevicePicker by remember { mutableStateOf(false) }
 
     Scaffold(
+        containerColor = OledBlack,
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(OledBlack)
+                    .statusBarsPadding()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(
@@ -170,7 +185,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             modifier = Modifier.padding(end = 8.dp)
                         ) {
                             Text(
-                                text = "PM5",
+                                text = stringResource(R.string.brand_short),
                                 color = ElectricCyan,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
@@ -179,7 +194,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             )
                         }
                         Text(
-                            text = "PROXMARK5",
+                            text = stringResource(R.string.brand_title),
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -205,13 +220,18 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             ) {
                                 Icon(
                                     imageVector = if (bat.isCharging) Icons.Filled.BatteryChargingFull else Icons.Filled.Bolt,
-                                    contentDescription = "Battery",
+                                    contentDescription = stringResource(R.string.cd_battery_status),
                                     tint = if (bat.isCharging) NeonGreen else if (bat.socPct > 20) ElectricCyan else ErrorRed,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "${bat.socPct}% | ${bat.voltageFormatted} | ${bat.currentFormatted}",
+                                    text = stringResource(
+                                        R.string.top_battery_chip,
+                                        bat.socPct,
+                                        bat.voltageFormatted,
+                                        bat.currentFormatted
+                                    ),
                                     color = if (bat.isCharging) NeonGreen else TextPrimary,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -232,7 +252,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                 modifier = Modifier.height(32.dp)
                             ) {
-                                Text("Disconnect", fontSize = 11.sp, fontFamily = MonospaceFamily)
+                                Text(stringResource(R.string.btn_disconnect), fontSize = 11.sp, fontFamily = MonospaceFamily)
                             }
                         }
                         is ConnectionState.Connecting, is ConnectionState.Negotiating -> {
@@ -243,7 +263,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                                     strokeWidth = 2.dp
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Connecting", color = WarningAmber, fontSize = 11.sp, fontFamily = MonospaceFamily)
+                                Text(stringResource(R.string.status_connecting_short), color = WarningAmber, fontSize = 11.sp, fontFamily = MonospaceFamily)
                             }
                         }
                         else -> {
@@ -254,9 +274,9 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier.height(32.dp)
                             ) {
-                                Icon(Icons.Filled.Bluetooth, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Filled.Bluetooth, contentDescription = stringResource(R.string.cd_bluetooth_connect), modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Connect", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                                Text(stringResource(R.string.btn_connect), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                             }
                         }
                     }
@@ -272,12 +292,30 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                 ) {
                     val connStatus = state.connectionState
                     val (statusColor, statusText) = when (connStatus) {
-                        is ConnectionState.Connected -> Pair(NeonGreen, "● CONNECTED: ${connStatus.deviceName} (${connStatus.transport}, MTU ${connStatus.mtu})")
-                        is ConnectionState.Connecting -> Pair(WarningAmber, "○ CONNECTING: ${connStatus.deviceName}")
-                        is ConnectionState.Negotiating -> Pair(WarningAmber, "○ NEGOTIATING: ${connStatus.stage}")
-                        is ConnectionState.Scanning -> Pair(ElectricCyan, "○ SCANNING FOR PM5 BWM...")
-                        is ConnectionState.Error -> Pair(ErrorRed, "✕ ${connStatus.message}")
-                        is ConnectionState.Disconnected -> Pair(TextMuted, "○ OFFLINE (Tap Connect)")
+                        is ConnectionState.Connected -> Pair(
+                            NeonGreen,
+                            stringResource(R.string.status_connected_detail, connStatus.deviceName, connStatus.transport, connStatus.mtu)
+                        )
+                        is ConnectionState.Connecting -> Pair(
+                            WarningAmber,
+                            stringResource(R.string.status_connecting_detail, connStatus.deviceName)
+                        )
+                        is ConnectionState.Negotiating -> Pair(
+                            WarningAmber,
+                            stringResource(R.string.status_negotiating_detail, connStatus.stage)
+                        )
+                        is ConnectionState.Scanning -> Pair(
+                            ElectricCyan,
+                            stringResource(R.string.status_scanning_detail)
+                        )
+                        is ConnectionState.Error -> Pair(
+                            ErrorRed,
+                            stringResource(R.string.status_error_detail, connStatus.message)
+                        )
+                        is ConnectionState.Disconnected -> Pair(
+                            TextMuted,
+                            stringResource(R.string.status_offline_detail)
+                        )
                     }
                     Text(
                         text = statusText,
@@ -285,10 +323,12 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                         fontSize = 11.sp,
                         fontFamily = MonospaceFamily,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
 
                     if (state.isBusy) {
+                        Spacer(modifier = Modifier.width(8.dp))
                         CircularProgressIndicator(
                             color = ElectricCyan,
                             modifier = Modifier.size(12.dp),
@@ -301,16 +341,14 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
     ) { innerPadding ->
         val configuration = LocalConfiguration.current
         val isFoldableExpanded = configuration.screenWidthDp >= 600
-        val navDestinations = remember {
-            listOf(
-                Triple("Power", "⚡ Power & HW", Icons.Filled.Bolt),
-                Triple("LF Studio", "📡 LF Studio", Icons.Filled.Sensors),
-                Triple("HF NFC", "💳 HF NFC", Icons.Filled.Nfc),
-                Triple("T55xx", "💾 T55xx", Icons.Filled.Memory),
-                Triple("Vault", "🗃️ Vault", Icons.Filled.Key),
-                Triple("Console", "⚡ Console", Icons.Filled.Terminal)
-            )
-        }
+        val navDestinations = listOf(
+            Triple(stringResource(R.string.tab_power_short), stringResource(R.string.tab_power_full), Icons.Filled.Bolt),
+            Triple(stringResource(R.string.tab_lf_short), stringResource(R.string.tab_lf_full), Icons.Filled.Sensors),
+            Triple(stringResource(R.string.tab_hf_short), stringResource(R.string.tab_hf_full), Icons.Filled.Nfc),
+            Triple(stringResource(R.string.tab_t55xx_short), stringResource(R.string.tab_t55xx_full), Icons.Filled.Memory),
+            Triple(stringResource(R.string.tab_vault_short), stringResource(R.string.tab_vault_full), Icons.Filled.Key),
+            Triple(stringResource(R.string.tab_console_short), stringResource(R.string.tab_console_full), Icons.Filled.Terminal)
+        )
 
         if (isFoldableExpanded) {
             // FOLDABLE UNFOLDED WORKSPACE: NavigationRail + Full-Width Responsive 2-Column Content
@@ -344,7 +382,8 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                                     fontSize = 10.sp,
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
                                     fontFamily = MonospaceFamily,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
                             colors = NavigationRailItemDefaults.colors(
@@ -384,7 +423,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = if (isConnected) "LINK OK" else "OFFLINE",
+                                text = stringResource(if (isConnected) R.string.rail_link_ok else R.string.rail_link_offline),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isConnected) NeonGreen else TextMuted,
@@ -477,6 +516,27 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                 }
             }
         }
+    }
+
+    if (showDevicePicker) {
+        DevicePickerDialog(
+            state = state,
+            onDismiss = { showDevicePicker = false },
+            onSelectDevice = { dev ->
+                viewModel.selectDevice(dev)
+                viewModel.connectSelectedDevice()
+                showDevicePicker = false
+            },
+            onConnectTcp = { host, port ->
+                viewModel.setTcpHost(host)
+                viewModel.setTcpPort(port)
+                viewModel.connectTcp(host, port)
+                showDevicePicker = false
+            },
+            onStartScan = { viewModel.startBleScan() },
+            onStopScan = { viewModel.stopBleScan() },
+            onRefreshPaired = { viewModel.refreshPairedDevices() }
+        )
     }
 }
 
@@ -610,13 +670,13 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.ElectricBolt,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.cd_battery_gauge),
                         tint = if (bat?.isCharging == true) NeonGreen else ElectricCyan,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "BWM BATTERY & FUEL GAUGE",
+                        text = stringResource(R.string.title_battery_gauge),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -628,9 +688,9 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     onClick = { viewModel.refreshBatteryNow() },
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "Refresh", tint = ElectricCyan, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.cd_refresh_battery), tint = ElectricCyan, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Refresh", fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_refresh), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                 }
             }
 
@@ -643,7 +703,7 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "${bat.socPct}%",
+                        text = stringResource(R.string.percent_fmt, bat.socPct),
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (bat.socPct > 20) NeonGreen else ErrorRed,
@@ -658,7 +718,7 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                             fontFamily = MonospaceFamily
                         )
                         Text(
-                            text = "Current: ${bat.currentFormatted}",
+                            text = stringResource(R.string.label_current, bat.currentFormatted),
                             fontSize = 12.sp,
                             color = if (bat.currentMa > 0) NeonGreen else AccentOrange,
                             fontFamily = MonospaceFamily
@@ -678,14 +738,20 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 Spacer(modifier = Modifier.height(10.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MetricItem("Voltage", bat.voltageFormatted)
-                    MetricItem("Temp", bat.tempFormatted)
-                    MetricItem("Capacity", "${bat.remainingMah} / ${bat.fullChargeMah} mAh")
-                    MetricItem("Health", "${bat.healthPct}%")
+                    MetricItem(stringResource(R.string.metric_voltage), bat.voltageFormatted)
+                    MetricItem(stringResource(R.string.metric_temp), bat.tempFormatted)
+                    MetricItem(stringResource(R.string.metric_capacity), stringResource(R.string.capacity_mah_fmt, bat.remainingMah, bat.fullChargeMah))
+                    MetricItem(stringResource(R.string.metric_health), stringResource(R.string.percent_fmt, bat.healthPct))
                 }
             } else {
                 Text(
-                    text = if (state.connectionState is ConnectionState.Connected) "Awaiting battery telemetry (CMD_PM5_BWM_GET_BATTERY)..." else "Connect PM5 to inspect battery telemetry",
+                    text = stringResource(
+                        if (state.connectionState is ConnectionState.Connected) {
+                            R.string.awaiting_battery_telemetry
+                        } else {
+                            R.string.connect_battery_prompt
+                        }
+                    ),
                     fontSize = 12.sp,
                     color = TextMuted,
                     fontFamily = MonospaceFamily
@@ -706,7 +772,7 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonGreen),
                     border = androidx.compose.foundation.BorderStroke(1.dp, NeonGreen.copy(alpha = 0.5f))
                 ) {
-                    Text("Charge ON", fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_charge_on), fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
                 }
                 OutlinedButton(
                     onClick = { viewModel.toggleCharge(false) },
@@ -715,7 +781,7 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningAmber),
                     border = androidx.compose.foundation.BorderStroke(1.dp, WarningAmber.copy(alpha = 0.5f))
                 ) {
-                    Text("Charge OFF", fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_charge_off), fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
                 }
                 OutlinedButton(
                     onClick = { viewModel.setChargeVoltage(4100) },
@@ -724,7 +790,7 @@ fun BatteryCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan),
                     border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.5f))
                 ) {
-                    Text("4.1V Safe", fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_charge_safe_41v), fontSize = 10.sp, maxLines = 1, softWrap = false, fontFamily = MonospaceFamily)
                 }
             }
         }
@@ -752,13 +818,13 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.SettingsInputAntenna,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.cd_antenna_controller),
                         tint = ElectricCyan,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "SWAPPABLE ANTENNA (I2C 0x51)",
+                        text = stringResource(R.string.title_antenna_controller),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -773,15 +839,15 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     if (state.isReadingAntenna) {
                         CircularProgressIndicator(color = ElectricCyan, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     } else {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Read", tint = ElectricCyan, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.cd_read_antenna), tint = ElectricCyan, modifier = Modifier.size(14.dp))
                     }
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Read", fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_read), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                 }
             }
 
             Text(
-                text = "Controls physical blue LEDs, frequency & Q-factor on the swappable antenna PCB",
+                text = stringResource(R.string.desc_antenna_controller),
                 fontSize = 11.sp,
                 color = TextMuted,
                 fontFamily = MonospaceFamily
@@ -798,7 +864,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
             ) {
                 Column(modifier = Modifier.padding(10.dp)) {
                     Text(
-                        text = "ANTENNA BLUE LEDs",
+                        text = stringResource(R.string.title_antenna_leds),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = ElectricCyan,
@@ -826,7 +892,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "LF Blue LED",
+                                text = stringResource(R.string.label_lf_blue_led),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (cfg?.lfLed == true) ElectricCyan else TextSecondary,
@@ -849,7 +915,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "HF Blue LED",
+                                text = stringResource(R.string.label_hf_blue_led),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = if (cfg?.hfLed == true) ElectricCyan else TextSecondary,
@@ -870,7 +936,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = if (bothOn) "Turn Both Blue LEDs OFF" else "Turn Both Blue LEDs ON",
+                            text = stringResource(if (bothOn) R.string.btn_leds_off else R.string.btn_leds_on),
                             fontSize = 10.sp,
                             color = if (bothOn) ElectricCyan else TextPrimary,
                             fontFamily = MonospaceFamily
@@ -888,7 +954,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "FREQ SELECT",
+                    text = stringResource(R.string.label_freq_select),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextSecondary,
@@ -897,7 +963,7 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 // Q-Factor Toggle
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (cfg?.highQ == true) "High Q" else "Low Q",
+                        text = stringResource(if (cfg?.highQ == true) R.string.label_high_q else R.string.label_low_q),
                         fontSize = 11.sp,
                         color = if (cfg?.highQ == true) WarningAmber else TextMuted,
                         fontFamily = MonospaceFamily
@@ -920,11 +986,11 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
             Spacer(modifier = Modifier.height(4.dp))
 
             val freqs = listOf(
-                Pair("125 kHz", "125k"),
-                Pair("134 kHz", "134k"),
-                Pair("250 kHz", "250k"),
-                Pair("375 kHz", "375k"),
-                Pair("500 kHz", "500k")
+                Pair(stringResource(R.string.freq_125k), "125k"),
+                Pair(stringResource(R.string.freq_134k), "134k"),
+                Pair(stringResource(R.string.freq_250k), "250k"),
+                Pair(stringResource(R.string.freq_375k), "375k"),
+                Pair(stringResource(R.string.freq_500k), "500k")
             )
             Row(
                 modifier = Modifier
@@ -972,13 +1038,17 @@ fun AntennaControllerCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Reg 0x02: 0x%02X".format(cfg?.rawByte ?: 0),
+                    text = stringResource(R.string.label_reg_02_fmt, cfg?.rawByte ?: 0),
                     fontSize = 10.sp,
                     color = TextMuted,
                     fontFamily = MonospaceFamily
                 )
                 Text(
-                    text = "Active: ${cfg?.activeFreqString ?: "None"} | Q:${if (cfg?.highQ == true) "High" else "Low"}",
+                    text = stringResource(
+                        R.string.label_active_freq_q,
+                        cfg?.activeFreqString ?: stringResource(R.string.label_none),
+                        stringResource(if (cfg?.highQ == true) R.string.label_q_short_high else R.string.label_q_short_low)
+                    ),
                     fontSize = 10.sp,
                     color = TextSecondary,
                     fontFamily = MonospaceFamily
@@ -999,10 +1069,10 @@ fun MainboardRgbCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Lightbulb, contentDescription = null, tint = state.selectedRgbColor, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Lightbulb, contentDescription = stringResource(R.string.cd_rgb_led), tint = state.selectedRgbColor, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "ANTENNA RGB LED (I2C 0x48)",
+                    text = stringResource(R.string.title_antenna_rgb),
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = TextPrimary,
@@ -1010,7 +1080,7 @@ fun MainboardRgbCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 )
             }
             Text(
-                text = "Controls swappable antenna RGB LED via CMD_PM5_RGB_SET",
+                text = stringResource(R.string.desc_antenna_rgb),
                 fontSize = 11.sp,
                 color = TextMuted,
                 fontFamily = MonospaceFamily
@@ -1018,13 +1088,13 @@ fun MainboardRgbCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
             Spacer(modifier = Modifier.height(10.dp))
 
             val colors = listOf(
-                Pair("Cyan", ElectricCyan),
-                Pair("Green", NeonGreen),
-                Pair("Purple", CyberPurple),
-                Pair("Amber", WarningAmber),
-                Pair("Red", ErrorRed),
-                Pair("White", Color.White),
-                Pair("OFF", Color.Black)
+                Pair(stringResource(R.string.color_cyan), ElectricCyan),
+                Pair(stringResource(R.string.color_green), NeonGreen),
+                Pair(stringResource(R.string.color_purple), CyberPurple),
+                Pair(stringResource(R.string.color_amber), WarningAmber),
+                Pair(stringResource(R.string.color_red), ErrorRed),
+                Pair(stringResource(R.string.color_white), Color.White),
+                Pair(stringResource(R.string.color_off), Color.Black)
             )
 
             FlowRow(
@@ -1074,10 +1144,10 @@ fun AntennaResonanceCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Tune, contentDescription = null, tint = ElectricCyan, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Filled.Tune, contentDescription = stringResource(R.string.cd_antenna_tune), tint = ElectricCyan, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "ANTENNA RESONANCE (TUNE)",
+                        text = stringResource(R.string.title_antenna_resonance),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -1092,7 +1162,7 @@ fun AntennaResonanceCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     modifier = Modifier.height(28.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
                 ) {
-                    Text("Measure Sweep", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_measure_sweep), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                 }
             }
 
@@ -1100,14 +1170,14 @@ fun AntennaResonanceCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
             val tuning = state.antennaTuning
             if (tuning != null) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    MetricItem("LF 125 kHz", "%.2f V".format(tuning.lf125V))
-                    MetricItem("LF 134 kHz", "%.2f V".format(tuning.lf134V))
-                    MetricItem("HF 13.56 MHz", "%.2f V".format(tuning.hfV))
-                    MetricItem("Peak Divisor", "${tuning.peakDivisor}")
+                    MetricItem(stringResource(R.string.freq_125k), stringResource(R.string.voltage_v_fmt, tuning.lf125V))
+                    MetricItem(stringResource(R.string.freq_134k), stringResource(R.string.voltage_v_fmt, tuning.lf134V))
+                    MetricItem("HF 13.56 MHz", stringResource(R.string.voltage_v_fmt, tuning.hfV))
+                    MetricItem(stringResource(R.string.metric_peak_divisor), "${tuning.peakDivisor}")
                 }
             } else {
                 Text(
-                    text = if (state.isTuningAntenna) "Sweeping frequencies (takes ~12s)..." else "No tuning sweep measured yet",
+                    text = stringResource(if (state.isTuningAntenna) R.string.sweeping_frequencies else R.string.no_tuning_sweep),
                     fontSize = 12.sp,
                     color = TextMuted,
                     fontFamily = MonospaceFamily
@@ -1134,13 +1204,13 @@ fun HardwareQcCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.Build,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.cd_hardware_qc),
                         tint = WarningAmber,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "HARDWARE QC SELF-TEST",
+                        text = stringResource(R.string.title_hardware_qc),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -1159,7 +1229,7 @@ fun HardwareQcCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                     if (state.isRunningQcTest) {
                         CircularProgressIndicator(color = OledBlack, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Run Self-Test", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                        Text(stringResource(R.string.btn_run_self_test), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                     }
                 }
             }
@@ -1167,29 +1237,30 @@ fun HardwareQcCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
             val qc = state.qcTestResult
             if (qc != null) {
+                val passed = qc.success || qc.failedItem == 2
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (qc.success || qc.failedItem == 2) NeonGreen.copy(alpha = 0.15f) else ErrorRed.copy(alpha = 0.15f),
+                    color = if (passed) NeonGreen.copy(alpha = 0.15f) else ErrorRed.copy(alpha = 0.15f),
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp,
-                        if (qc.success || qc.failedItem == 2) NeonGreen.copy(alpha = 0.6f) else ErrorRed.copy(alpha = 0.6f)
+                        if (passed) NeonGreen.copy(alpha = 0.6f) else ErrorRed.copy(alpha = 0.6f)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = if (qc.success || qc.failedItem == 2) Icons.Filled.Check else Icons.Filled.Close,
-                                contentDescription = null,
-                                tint = if (qc.success || qc.failedItem == 2) NeonGreen else ErrorRed,
+                                imageVector = if (passed) Icons.Filled.Check else Icons.Filled.Close,
+                                contentDescription = stringResource(if (passed) R.string.cd_diagnostic_passed else R.string.cd_diagnostic_failed),
+                                tint = if (passed) NeonGreen else ErrorRed,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (qc.success || qc.failedItem == 2) "DIAGNOSTIC PASSED" else "DIAGNOSTIC FAILED",
+                                text = stringResource(if (passed) R.string.qc_passed else R.string.qc_failed),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (qc.success || qc.failedItem == 2) NeonGreen else ErrorRed,
+                                color = if (passed) NeonGreen else ErrorRed,
                                 fontFamily = MonospaceFamily
                             )
                         }
@@ -1203,7 +1274,7 @@ fun HardwareQcCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
                 }
             } else {
                 Text(
-                    text = "Tests Antenna controller (I2C 0x51), Mainboard RGB (0x48), buzzers, and LEDs.",
+                    text = stringResource(R.string.desc_hardware_qc),
                     fontSize = 11.sp,
                     color = TextMuted,
                     fontFamily = MonospaceFamily
@@ -1223,7 +1294,7 @@ fun ArchitectureCard(state: Pm5UiState) {
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Text(
-                text = "PROXMARK5 ARCHITECTURE",
+                text = stringResource(R.string.title_architecture),
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 color = TextPrimary,
@@ -1231,10 +1302,7 @@ fun ArchitectureCard(state: Pm5UiState) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "• MCU: AT32F435 (288 MHz ARM Cortex-M4, Fast ASK Demod)\n" +
-                        "• FPGA: Gowin Semi\n" +
-                        "• Wireless: ESP32-C2 (BWM BLE & WiFi STA/TCP)\n" +
-                        "• Charger: AW32001E | Fuel Gauge: BQ27427",
+                text = stringResource(R.string.desc_architecture),
                 fontSize = 11.sp,
                 color = TextSecondary,
                 lineHeight = 16.sp,
@@ -1245,7 +1313,7 @@ fun ArchitectureCard(state: Pm5UiState) {
             if (ver != null && ver.versionString.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Firmware: ${ver.versionString}",
+                    text = stringResource(R.string.label_firmware_version, ver.versionString),
                     fontSize = 11.sp,
                     color = NeonGreen,
                     fontFamily = MonospaceFamily
@@ -1261,7 +1329,6 @@ fun ArchitectureCard(state: Pm5UiState) {
 
 @Composable
 fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean = false) {
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
     AdaptiveTwoColumnPane(
@@ -1283,22 +1350,23 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "AUTO-DEMODULATOR SCANNER",
+                                text = stringResource(R.string.title_auto_demod),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = TextPrimary,
                                 fontFamily = MonospaceFamily
                             )
                             Text(
-                                text = "Cycles HID, EM4100, AWID, IO Prox",
+                                text = stringResource(R.string.desc_auto_demod),
                                 fontSize = 11.sp,
                                 color = TextMuted,
                                 fontFamily = MonospaceFamily
                             )
                         }
 
+                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
                                 if (state.isAutoScanning) viewModel.stopAutoScan() else viewModel.startAutoScan()
@@ -1310,9 +1378,18 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
-                            Icon(if (state.isAutoScanning) Icons.Filled.Stop else Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(
+                                if (state.isAutoScanning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                contentDescription = stringResource(R.string.cd_start_scan),
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (state.isAutoScanning) "STOP SCAN" else "START AUTO-SCAN", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                            Text(
+                                text = stringResource(if (state.isAutoScanning) R.string.btn_stop_scan else R.string.btn_start_auto_scan),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = MonospaceFamily
+                            )
                         }
                     }
 
@@ -1322,10 +1399,10 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        WatchFilterChip("HID", state.isWatchingHid) { viewModel.toggleWatch("HID") }
-                        WatchFilterChip("EM4100", state.isWatchingEm4100) { viewModel.toggleWatch("EM4100") }
-                        WatchFilterChip("AWID", state.isWatchingAwid) { viewModel.toggleWatch("AWID") }
-                        WatchFilterChip("IO", state.isWatchingIo) { viewModel.toggleWatch("IO") }
+                        WatchFilterChip(stringResource(R.string.watch_hid), state.isWatchingHid) { viewModel.toggleWatch("HID") }
+                        WatchFilterChip(stringResource(R.string.watch_em4100), state.isWatchingEm4100) { viewModel.toggleWatch("EM4100") }
+                        WatchFilterChip(stringResource(R.string.watch_awid), state.isWatchingAwid) { viewModel.toggleWatch("AWID") }
+                        WatchFilterChip(stringResource(R.string.watch_io), state.isWatchingIo) { viewModel.toggleWatch("IO") }
                     }
                 }
             }
@@ -1352,14 +1429,14 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                                 fontSize = 13.sp,
                                 fontFamily = MonospaceFamily
                             )
+                            val sensitiveLabel = stringResource(R.string.label_sensitive_uid)
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(badge.uidHex))
-                                    Toast.makeText(context, "Copied UID: ${badge.uidHex}", Toast.LENGTH_SHORT).show()
+                                    copySensitiveToClipboard(context, sensitiveLabel, badge.uidHex)
                                 },
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", tint = ElectricCyan, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.cd_copy_uid), tint = ElectricCyan, modifier = Modifier.size(16.dp))
                             }
                         }
 
@@ -1374,9 +1451,9 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            MetricItem("Card Number", badge.cardId)
-                            MetricItem("Facility Code", badge.facilityCode ?: "—")
-                            MetricItem("Format", badge.formatLen ?: "Standard")
+                            MetricItem(stringResource(R.string.metric_card_number), badge.cardId)
+                            MetricItem(stringResource(R.string.metric_facility_code), badge.facilityCode ?: stringResource(R.string.label_dash))
+                            MetricItem(stringResource(R.string.metric_format), badge.formatLen ?: stringResource(R.string.label_standard))
                         }
 
                         // Clone Quick Action
@@ -1387,9 +1464,9 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.cd_clone_tag), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Clone to Transponder (T5577)", fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
+                            Text(stringResource(R.string.btn_clone_to_t5577), fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
                         }
                     }
                 }
@@ -1406,7 +1483,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "EM4100 64-BIT FRAME STRUCTURE",
+                            text = stringResource(R.string.title_em4100_frame),
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                             color = ElectricCyan,
@@ -1414,7 +1491,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Standard: ${em.formattedPm3}",
+                            text = stringResource(R.string.label_standard_fmt, em.formattedPm3),
                             fontSize = 12.sp,
                             color = TextSecondary,
                             fontFamily = MonospaceFamily
@@ -1438,7 +1515,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
 
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Parity Check: Even Horizontal & Column Parity Valid",
+                            text = stringResource(R.string.label_parity_valid),
                             fontSize = 11.sp,
                             color = NeonGreen,
                             fontFamily = MonospaceFamily
@@ -1458,7 +1535,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                 var inputUid by remember { mutableStateOf("") }
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "MANUAL TRANSPONDER CLONING",
+                        text = stringResource(R.string.title_manual_clone),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -1469,7 +1546,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                     OutlinedTextField(
                         value = inputUid,
                         onValueChange = { inputUid = it.filter { c -> c.isLetterOrDigit() }.take(10).uppercase() },
-                        label = { Text("10-Hex UID (e.g. 0102030405)", fontFamily = MonospaceFamily) },
+                        label = { Text(stringResource(R.string.hint_uid_10hex), fontFamily = MonospaceFamily) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1485,13 +1562,13 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        TargetChipButton("T5577", state.cloneTargetChip == Pm5Constants.TARGET_T55X7) {
+                        TargetChipButton(stringResource(R.string.chip_t5577), state.cloneTargetChip == Pm5Constants.TARGET_T55X7) {
                             viewModel.setCloneTargetChip(Pm5Constants.TARGET_T55X7)
                         }
-                        TargetChipButton("Q5", state.cloneTargetChip == Pm5Constants.TARGET_Q5) {
+                        TargetChipButton(stringResource(R.string.chip_q5), state.cloneTargetChip == Pm5Constants.TARGET_Q5) {
                             viewModel.setCloneTargetChip(Pm5Constants.TARGET_Q5)
                         }
-                        TargetChipButton("EM4305", state.cloneTargetChip == Pm5Constants.TARGET_EM4305) {
+                        TargetChipButton(stringResource(R.string.chip_em4305), state.cloneTargetChip == Pm5Constants.TARGET_EM4305) {
                             viewModel.setCloneTargetChip(Pm5Constants.TARGET_EM4305)
                         }
                     }
@@ -1504,7 +1581,7 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("WRITE CLONE TO CARD", fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
+                        Text(stringResource(R.string.btn_write_clone), fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
                     }
 
                     if (state.cloneStatus != null) {
@@ -1528,7 +1605,6 @@ fun LfBadgeStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boo
 
 @Composable
 fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean = false) {
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
 
     AdaptiveTwoColumnPane(
@@ -1549,14 +1625,14 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "ISO 14443-A (HF 13.56 MHz)",
+                                text = stringResource(R.string.title_iso14443a),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = TextPrimary,
                                 fontFamily = MonospaceFamily
                             )
                             Text(
-                                text = "MIFARE Classic, Ultralight, NTAG, DESFire",
+                                text = stringResource(R.string.desc_iso14443a),
                                 fontSize = 11.sp,
                                 color = TextMuted,
                                 fontFamily = MonospaceFamily
@@ -1569,9 +1645,9 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.height(32.dp)
                         ) {
-                            Icon(Icons.Filled.Sensors, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Filled.Sensors, contentDescription = stringResource(R.string.cd_scan_hf), modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("READ 14443A", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                            Text(stringResource(R.string.btn_read_14443a), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                         }
                     }
 
@@ -1610,14 +1686,14 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                                 fontSize = 14.sp,
                                 fontFamily = MonospaceFamily
                             )
+                            val sensitiveLabel = stringResource(R.string.label_sensitive_uid)
                             IconButton(
                                 onClick = {
-                                    clipboardManager.setText(AnnotatedString(hfCard.uidHex))
-                                    Toast.makeText(context, "Copied UID: ${hfCard.uidHex}", Toast.LENGTH_SHORT).show()
+                                    copySensitiveToClipboard(context, sensitiveLabel, hfCard.uidHex)
                                 },
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", tint = ElectricCyan, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.cd_copy_uid), tint = ElectricCyan, modifier = Modifier.size(16.dp))
                             }
                         }
 
@@ -1632,14 +1708,14 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            MetricItem("UID Length", "${hfCard.uidLen} Bytes")
-                            MetricItem("ATQA", "0x${hfCard.atqaHex}")
-                            MetricItem("SAK", "0x${hfCard.sakHex}")
+                            MetricItem(stringResource(R.string.metric_uid_length), stringResource(R.string.uid_bytes_fmt, hfCard.uidLen))
+                            MetricItem(stringResource(R.string.metric_atqa), stringResource(R.string.hex_prefix_fmt, hfCard.atqaHex))
+                            MetricItem(stringResource(R.string.metric_sak), stringResource(R.string.hex_prefix_fmt, hfCard.sakHex))
                         }
 
                         if (hfCard.atsHex != null) {
                             Spacer(modifier = Modifier.height(6.dp))
-                            MetricItem("ATS / Historical", hfCard.atsHex)
+                            MetricItem(stringResource(R.string.metric_ats), hfCard.atsHex)
                         }
                     }
                 }
@@ -1652,7 +1728,7 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "CARD INSPECTOR READY",
+                            text = stringResource(R.string.title_hf_inspector_ready),
                             color = ElectricCyan,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
@@ -1660,7 +1736,7 @@ fun HfNfcStudioTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boole
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Present a 13.56 MHz ISO 14443-A card or emulator to the PM5 coil and tap READ 14443A to inspect UID, ATQA, SAK, and ATS.",
+                            text = stringResource(R.string.desc_hf_inspector_ready),
                             color = TextMuted,
                             fontSize = 11.sp,
                             fontFamily = MonospaceFamily
@@ -1696,14 +1772,14 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "T55XX BLOCK MAP (0 - 7)",
+                                text = stringResource(R.string.title_t55xx_map),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = TextPrimary,
                                 fontFamily = MonospaceFamily
                             )
                             Text(
-                                text = "AT32 Fast MCU Demodulation Enabled",
+                                text = stringResource(R.string.desc_t55xx_map),
                                 fontSize = 11.sp,
                                 color = NeonGreen,
                                 fontFamily = MonospaceFamily
@@ -1717,7 +1793,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             modifier = Modifier.height(28.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
                         ) {
-                            Text("READ ALL (0-7)", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                            Text(stringResource(R.string.btn_read_all_blocks), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                         }
                     }
 
@@ -1731,7 +1807,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "Config [B0]: ${b0.configDescription}",
+                                text = stringResource(R.string.label_config_b0_fmt, b0.configDescription),
                                 color = ElectricCyan,
                                 fontSize = 11.sp,
                                 fontFamily = MonospaceFamily,
@@ -1742,6 +1818,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
 
                     // Grid of 8 blocks
                     Spacer(modifier = Modifier.height(10.dp))
+                    val dash = stringResource(R.string.label_dash)
                     for (b in 0..7) {
                         val entry = state.t55xxBlocks[b]
                         Row(
@@ -1755,14 +1832,14 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Blk $b: ${entry?.hexString ?: "—"}",
+                                text = stringResource(R.string.label_blk_fmt, b, entry?.hexString ?: dash),
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp,
                                 color = if (entry?.value != null) TextPrimary else TextMuted,
                                 fontFamily = MonospaceFamily
                             )
                             Text(
-                                text = entry?.asciiString ?: "—",
+                                text = entry?.asciiString ?: dash,
                                 fontSize = 12.sp,
                                 color = TextSecondary,
                                 fontFamily = MonospaceFamily
@@ -1772,7 +1849,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                                 modifier = Modifier.height(24.dp),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                             ) {
-                                Text("Read", fontSize = 10.sp, fontFamily = MonospaceFamily)
+                                Text(stringResource(R.string.btn_read), fontSize = 10.sp, fontFamily = MonospaceFamily)
                             }
                         }
                     }
@@ -1789,7 +1866,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "WRITE BLOCK ${state.selectedT55xxBlock}",
+                        text = stringResource(R.string.title_write_block_fmt, state.selectedT55xxBlock),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -1800,7 +1877,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                     OutlinedTextField(
                         value = state.writeBlockDataHex,
                         onValueChange = { viewModel.setWriteBlockDataHex(it) },
-                        label = { Text("Data (8-Hex e.g. 00148040)", fontFamily = MonospaceFamily) },
+                        label = { Text(stringResource(R.string.hint_block_data_hex), fontFamily = MonospaceFamily) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1820,7 +1897,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                         OutlinedTextField(
                             value = state.t55xxPasswordHex,
                             onValueChange = { viewModel.setT55xxPasswordHex(it) },
-                            label = { Text("Password (8-Hex)", fontFamily = MonospaceFamily) },
+                            label = { Text(stringResource(R.string.hint_password_hex), fontFamily = MonospaceFamily) },
                             singleLine = true,
                             modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
@@ -1837,7 +1914,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.height(52.dp)
                         ) {
-                            Text("WRITE", fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
+                            Text(stringResource(R.string.btn_write), fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = MonospaceFamily)
                         }
                     }
 
@@ -1862,7 +1939,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "PASSWORD AUDIT & CRACKER",
+                        text = stringResource(R.string.title_password_audit),
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
                         color = TextPrimary,
@@ -1879,7 +1956,13 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             ),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text(if (state.isCheckingPwds) "CANCEL AUDIT" else "DICTIONARY AUDIT", fontSize = 11.sp, fontFamily = MonospaceFamily)
+                            Text(
+                                text = stringResource(if (state.isCheckingPwds) R.string.btn_cancel_audit else R.string.btn_dictionary_audit),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontFamily = MonospaceFamily
+                            )
                         }
 
                         OutlinedButton(
@@ -1891,7 +1974,13 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan),
                             border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.5f))
                         ) {
-                            Text("WHITE CLONER KEY", fontSize = 11.sp, fontFamily = MonospaceFamily)
+                            Text(
+                                text = stringResource(R.string.btn_white_cloner_key),
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontFamily = MonospaceFamily
+                            )
                         }
                     }
 
@@ -1916,8 +2005,15 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
 
 @Composable
 fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean = false) {
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val exportFilename = stringResource(R.string.default_vault_export_filename)
+    val exportVaultLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportVaultToUri(uri)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -1928,7 +2024,7 @@ fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "SAVED BADGES & TAGS (${state.savedTags.size})",
+                text = stringResource(R.string.title_saved_tags_fmt, state.savedTags.size),
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 color = TextPrimary,
@@ -1937,23 +2033,38 @@ fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean 
 
             Row {
                 TextButton(
-                    onClick = {
-                        val json = viewModel.exportVaultJson()
-                        clipboardManager.setText(AnnotatedString(json))
-                        Toast.makeText(context, "Exported JSON to Clipboard!", Toast.LENGTH_SHORT).show()
-                    }
+                    onClick = { exportVaultLauncher.launch(exportFilename) }
                 ) {
-                    Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = ElectricCyan)
+                    Icon(Icons.Filled.Download, contentDescription = stringResource(R.string.cd_export_vault), modifier = Modifier.size(14.dp), tint = ElectricCyan)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Export JSON", fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_export_json), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                 }
+            }
+        }
+
+        if (state.vaultError != null) {
+            Surface(
+                color = ErrorRed.copy(alpha = 0.14f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            ) {
+                Text(
+                    text = state.vaultError,
+                    color = ErrorRed,
+                    fontSize = 11.sp,
+                    fontFamily = MonospaceFamily,
+                    modifier = Modifier.padding(10.dp)
+                )
             }
         }
 
         if (state.savedTags.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "No saved tags yet.\nScan an LF badge or HF card to save it here automatically.",
+                    text = stringResource(R.string.vault_empty_message),
                     color = TextMuted,
                     fontSize = 12.sp,
                     fontFamily = MonospaceFamily,
@@ -1961,6 +2072,8 @@ fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean 
                 )
             }
         } else {
+            val dash = stringResource(R.string.label_dash)
+            val sensitiveLabel = stringResource(R.string.label_sensitive_uid)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(if (isExpanded) 2 else 1),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2007,19 +2120,18 @@ fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean 
                                 Row {
                                     IconButton(
                                         onClick = {
-                                            clipboardManager.setText(AnnotatedString(tag.uidHex))
-                                            Toast.makeText(context, "Copied UID: ${tag.uidHex}", Toast.LENGTH_SHORT).show()
+                                            copySensitiveToClipboard(context, sensitiveLabel, tag.uidHex)
                                         },
                                         modifier = Modifier.size(24.dp)
                                     ) {
-                                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy", tint = ElectricCyan, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(R.string.cd_copy_uid), tint = ElectricCyan, modifier = Modifier.size(16.dp))
                                     }
                                     Spacer(modifier = Modifier.width(4.dp))
                                     IconButton(
                                         onClick = { viewModel.deleteTag(tag.id) },
                                         modifier = Modifier.size(24.dp)
                                     ) {
-                                        Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = ErrorRed, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.cd_delete_tag), tint = ErrorRed, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }
@@ -2036,7 +2148,12 @@ fun TagVaultTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean 
                             if (tag.cardId.isNotEmpty() || tag.facilityCode != null) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Card: ${tag.cardId} | FC: ${tag.facilityCode ?: "—"} | ${tag.formatDescription ?: ""}",
+                                    text = stringResource(
+                                        R.string.vault_tag_detail_fmt,
+                                        tag.cardId,
+                                        tag.facilityCode ?: dash,
+                                        tag.formatDescription ?: ""
+                                    ),
                                     fontSize = 11.sp,
                                     color = TextSecondary,
                                     fontFamily = MonospaceFamily
@@ -2065,11 +2182,12 @@ fun ConsoleTerminalTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: B
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "COMMUNICATION TERMINAL",
+                text = stringResource(R.string.title_comm_terminal),
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 color = TextPrimary,
-                fontFamily = MonospaceFamily
+                fontFamily = MonospaceFamily,
+                modifier = Modifier.weight(1f)
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2079,14 +2197,14 @@ fun ConsoleTerminalTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: B
                         modifier = Modifier.height(26.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                     ) {
-                        Text("BATT", fontSize = 10.sp, fontFamily = MonospaceFamily)
+                        Text(stringResource(R.string.btn_batt), fontSize = 10.sp, fontFamily = MonospaceFamily)
                     }
                     OutlinedButton(
                         onClick = { viewModel.readAntennaConfig() },
                         modifier = Modifier.height(26.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                     ) {
-                        Text("ANT CFG", fontSize = 10.sp, fontFamily = MonospaceFamily)
+                        Text(stringResource(R.string.btn_ant_cfg), fontSize = 10.sp, fontFamily = MonospaceFamily)
                     }
                 }
                 OutlinedButton(
@@ -2094,7 +2212,7 @@ fun ConsoleTerminalTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: B
                     modifier = Modifier.height(26.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                 ) {
-                    Text("PING", fontSize = 10.sp, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_ping), fontSize = 10.sp, fontFamily = MonospaceFamily)
                 }
                 OutlinedButton(
                     onClick = { viewModel.breakLoop() },
@@ -2102,7 +2220,7 @@ fun ConsoleTerminalTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: B
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed)
                 ) {
-                    Text("BREAK", fontSize = 10.sp, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.btn_break), fontSize = 10.sp, fontFamily = MonospaceFamily)
                 }
             }
         }
@@ -2167,7 +2285,7 @@ fun WatchFilterChip(label: String, selected: Boolean, onToggle: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (selected) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = NeonGreen, modifier = Modifier.size(12.dp))
+                Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.cd_selected), tint = NeonGreen, modifier = Modifier.size(12.dp))
                 Spacer(modifier = Modifier.width(4.dp))
             }
             Text(
@@ -2233,14 +2351,14 @@ fun DevicePickerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "CONNECT PROXMARK5",
+                        text = stringResource(R.string.title_connect_pm5),
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         color = TextPrimary,
                         fontFamily = MonospaceFamily
                     )
                     IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close", tint = TextMuted)
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.cd_close_dialog), tint = TextMuted)
                     }
                 }
 
@@ -2252,19 +2370,25 @@ fun DevicePickerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("BLE Devices", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElectricCyan, fontFamily = MonospaceFamily)
+                    Text(stringResource(R.string.label_ble_devices), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElectricCyan, fontFamily = MonospaceFamily)
                     Row {
                         TextButton(onClick = { if (state.connectionState is ConnectionState.Scanning) onStopScan() else onStartScan() }) {
-                            Text(if (state.connectionState is ConnectionState.Scanning) "Stop" else "Scan", fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                            Text(
+                                text = stringResource(if (state.connectionState is ConnectionState.Scanning) R.string.btn_stop else R.string.btn_scan),
+                                fontSize = 11.sp,
+                                color = ElectricCyan,
+                                fontFamily = MonospaceFamily
+                            )
                         }
                         TextButton(onClick = onRefreshPaired) {
-                            Text("Paired", fontSize = 11.sp, color = TextSecondary, fontFamily = MonospaceFamily)
+                            Text(stringResource(R.string.btn_paired), fontSize = 11.sp, color = TextSecondary, fontFamily = MonospaceFamily)
                         }
                     }
                 }
 
                 // Device List (Both bonded and scanned)
                 val allDevices = (state.discoveredDevices.map { it.device } + state.pairedDevices).distinctBy { it.address }
+                val unknownLabel = stringResource(R.string.label_unknown_device)
 
                 LazyColumn(
                     modifier = Modifier
@@ -2274,7 +2398,7 @@ fun DevicePickerDialog(
                     if (allDevices.isEmpty()) {
                         item {
                             Text(
-                                text = "No Proxmark5 found yet. Tap 'Scan' to search over BLE.",
+                                text = stringResource(R.string.no_pm5_found_yet),
                                 color = TextMuted,
                                 fontSize = 11.sp,
                                 fontFamily = MonospaceFamily,
@@ -2284,7 +2408,7 @@ fun DevicePickerDialog(
                     } else {
                         items(allDevices) { dev ->
                             @SuppressLint("MissingPermission")
-                            val devName = dev.name ?: "Unknown"
+                            val devName = dev.name ?: unknownLabel
                             val isPm5 = devName.contains("Proxmark", ignoreCase = true) || devName.contains("PM5", ignoreCase = true)
 
                             Row(
@@ -2298,7 +2422,7 @@ fun DevicePickerDialog(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
                                         imageVector = if (isPm5) Icons.Filled.BluetoothConnected else Icons.Filled.Bluetooth,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(if (isPm5) R.string.cd_device_proxmark else R.string.cd_device_bluetooth),
                                         tint = if (isPm5) NeonGreen else TextSecondary,
                                         modifier = Modifier.size(16.dp)
                                     )
@@ -2315,7 +2439,7 @@ fun DevicePickerDialog(
                                     }
                                 }
 
-                                Text("Connect", fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                                Text(stringResource(R.string.btn_connect), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                             }
                             HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
                         }
@@ -2326,14 +2450,14 @@ fun DevicePickerDialog(
                 Spacer(modifier = Modifier.height(10.dp))
                 HorizontalDivider(color = DarkOutline)
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("Or Connect over WiFi TCP (BWM STA)", fontSize = 11.sp, color = TextSecondary, fontFamily = MonospaceFamily)
+                Text(stringResource(R.string.label_wifi_tcp_alt), fontSize = 11.sp, color = TextSecondary, fontFamily = MonospaceFamily)
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(
                         value = tcpHost,
                         onValueChange = { tcpHost = it },
-                        label = { Text("IP", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                        label = { Text(stringResource(R.string.hint_ip), fontSize = 10.sp, fontFamily = MonospaceFamily) },
                         modifier = Modifier.weight(2f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -2344,7 +2468,7 @@ fun DevicePickerDialog(
                     OutlinedTextField(
                         value = tcpPort,
                         onValueChange = { tcpPort = it },
-                        label = { Text("Port", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                        label = { Text(stringResource(R.string.hint_port), fontSize = 10.sp, fontFamily = MonospaceFamily) },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -2360,7 +2484,7 @@ fun DevicePickerDialog(
                             .align(Alignment.CenterVertically)
                             .height(52.dp)
                     ) {
-                        Text("TCP", fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                        Text(stringResource(R.string.btn_tcp), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
                     }
                 }
             }

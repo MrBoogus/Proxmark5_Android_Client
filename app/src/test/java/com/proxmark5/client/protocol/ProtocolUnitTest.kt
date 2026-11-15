@@ -1,14 +1,29 @@
 package com.proxmark5.client.protocol
 
+import com.proxmark5.client.data.CapturedTag
+import com.proxmark5.client.data.SoftwareAesGcmVaultAead
+import com.proxmark5.client.data.TagStorageManager
+import com.proxmark5.client.data.TinkLegacyVaultMigrator
+import com.proxmark5.client.data.VaultResult
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.StandardCharsets
+import java.security.GeneralSecurityException
+import javax.crypto.Cipher
+import javax.crypto.Mac
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 class ProtocolUnitTest {
 
@@ -20,6 +35,8 @@ class ProtocolUnitTest {
         assertTrue(Pm5Crc16.validate(sample, 0, sample.size, crc))
         assertTrue(Pm5Crc16.validate(sample, 0, sample.size, Pm5Constants.RESPONSENG_POSTAMBLE_MAGIC))
         assertFalse(Pm5Crc16.validate(sample, 0, sample.size, crc xor 0xFFFF))
+        // Standard CRC-16/ISO14443-A check vector for "123456789" -> 0xBF05 little-endian (first=0x05, second=0xBF)
+        assertEquals(0x05BF, Pm5Crc16.compute("123456789".toByteArray(Charsets.US_ASCII)))
     }
 
     @Test
@@ -265,5 +282,148 @@ class ProtocolUnitTest {
         assertEquals(133, T55xxPayloadBuilder.buildDangerRaw("101010", 500).size)
         assertEquals(58, T55xxTimingConfig.defaultTimings(persist = false).toWireBytes().size)
         assertTrue(T55xxPayloadBuilder.decodeT55xxBlock0(0x00148040L).contains("EM4100 Standard"))
+    }
+
+    @Test
+    fun `software vault aead encrypts decrypts and rejects tampering or wrong AAD`() {
+        val key = ByteArray(32) { (it * 7 + 3).toByte() }
+        val aead = SoftwareAesGcmVaultAead(key)
+        val plaintext = """[{"uidHex":"04112233445566","technology":"MIFARE DESFire"}]""".toByteArray(StandardCharsets.UTF_8)
+
+        val envelope = aead.encrypt(plaintext, TagStorageManager.MAGIC_V2)
+        assertArrayEquals(TagStorageManager.MAGIC_V2, envelope.copyOfRange(0, TagStorageManager.MAGIC_V2.size))
+        assertArrayEquals(plaintext, aead.decrypt(envelope, TagStorageManager.MAGIC_V2))
+
+        val tampered = envelope.clone().apply { this[lastIndex] = (this[lastIndex].toInt() xor 0x01).toByte() }
+        try {
+            aead.decrypt(tampered, TagStorageManager.MAGIC_V2)
+            fail("Expected GeneralSecurityException on tampered ciphertext")
+        } catch (_: GeneralSecurityException) {
+            // Expected
+        }
+
+        try {
+            aead.decrypt(envelope, "WRONG!".toByteArray(StandardCharsets.US_ASCII))
+            fail("Expected GeneralSecurityException on wrong AAD")
+        } catch (_: GeneralSecurityException) {
+            // Expected
+        }
+
+        try {
+            aead.decrypt(TagStorageManager.MAGIC_V2 + ByteArray(8), TagStorageManager.MAGIC_V2)
+            fail("Expected GeneralSecurityException on truncated envelope")
+        } catch (_: GeneralSecurityException) {
+            // Expected
+        }
+    }
+
+    @Test
+    fun `tink legacy stream migrator decrypts single and multi-segment AES256_GCM_HKDF streams`() {
+        fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {
+            val mac = Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(salt, "HmacSHA256"))
+            val prk = mac.doFinal(ikm)
+            mac.init(SecretKeySpec(prk, "HmacSHA256"))
+            val out = ByteArray(length)
+            var prev = ByteArray(0)
+            var off = 0
+            var ctr = 1
+            while (off < length) {
+                mac.reset()
+                mac.update(prev)
+                mac.update(info)
+                mac.update(ctr.toByte())
+                prev = mac.doFinal()
+                val take = minOf(prev.size, length - off)
+                System.arraycopy(prev, 0, out, off, take)
+                off += take
+                ctr++
+            }
+            return out
+        }
+
+        fun buildTinkStream(
+            plaintext: ByteArray,
+            ikm: ByteArray,
+            salt: ByteArray,
+            noncePrefix: ByteArray,
+            segmentSize: Int,
+            aad: ByteArray
+        ): ByteArray {
+            val headerLen = 1 + 32 + 7
+            val subKey = SecretKeySpec(hkdfSha256(ikm, salt, aad, 32), "AES")
+            val stream = ByteArrayOutputStream()
+            stream.write(headerLen)
+            stream.write(salt)
+            stream.write(noncePrefix)
+
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            var pos = 0
+            var segNr = 0
+            while (pos < plaintext.size || segNr == 0) {
+                val maxCipherSeg = if (segNr == 0) segmentSize - headerLen else segmentSize
+                val maxPlainSeg = maxCipherSeg - 16
+                val end = minOf(plaintext.size, pos + maxPlainSeg)
+                val isLast = (end == plaintext.size)
+                val nonce = ByteBuffer.allocate(12).order(ByteOrder.BIG_ENDIAN).apply {
+                    put(noncePrefix)
+                    putInt(segNr)
+                    put(if (isLast) 1.toByte() else 0.toByte())
+                }.array()
+                cipher.init(Cipher.ENCRYPT_MODE, subKey, GCMParameterSpec(128, nonce))
+                stream.write(cipher.doFinal(plaintext, pos, end - pos))
+                pos = end
+                segNr++
+            }
+            return stream.toByteArray()
+        }
+
+        val ikm = ByteArray(32) { (it + 0x10).toByte() }
+        val salt = ByteArray(32) { (0xAA - it).toByte() }
+        val noncePrefix = byteArrayOf(1, 2, 3, 4, 5, 6, 7)
+        val aad = "pm5_saved_tags.json".toByteArray(StandardCharsets.UTF_8)
+
+        val singlePlain = """[{"uidHex":"0102030405","technology":"EM4100"}]""".toByteArray(StandardCharsets.UTF_8)
+        val singleStream = buildTinkStream(singlePlain, ikm, salt, noncePrefix, 4096, aad)
+        assertArrayEquals(
+            singlePlain,
+            TinkLegacyVaultMigrator.decryptAesGcmHkdfStream(singleStream, ikm, 32, 4096, aad)
+        )
+
+        val multiPlain = "Segment0-Segment1-Segment2-Payload-0123456789ABCDEF".repeat(3).toByteArray(StandardCharsets.UTF_8)
+        val multiStream = buildTinkStream(multiPlain, ikm, salt, noncePrefix, 96, aad)
+        assertArrayEquals(
+            multiPlain,
+            TinkLegacyVaultMigrator.decryptAesGcmHkdfStream(multiStream, ikm, 32, 96, aad)
+        )
+    }
+
+    @Test
+    fun `tag storage manager preserves corrupt encrypted file on decrypt failure without overwriting`() {
+        val tempFile = File.createTempFile("pm5_vault_corrupt_", ".json")
+        try {
+            val corruptPayload = TagStorageManager.MAGIC_V2 + ByteArray(48) { (it xor 0x5A).toByte() }
+            tempFile.writeBytes(corruptPayload)
+
+            val manager = TagStorageManager(
+                context = null,
+                storageFileOverride = tempFile,
+                vaultAead = SoftwareAesGcmVaultAead(ByteArray(32) { 0x42.toByte() })
+            )
+
+            runBlocking {
+                val loadResult = manager.loadAll()
+                assertTrue(loadResult is VaultResult.Error)
+
+                val saveResult = manager.save(
+                    CapturedTag(uidHex = "04112233445566", technology = "MIFARE DESFire", frequency = "HF")
+                )
+                assertTrue(saveResult is VaultResult.Error)
+            }
+
+            assertArrayEquals(corruptPayload, tempFile.readBytes())
+        } finally {
+            tempFile.delete()
+        }
     }
 }
