@@ -1,0 +1,14 @@
+{
+  "targets": [
+    {
+      "repo": "RfidResearchGroup/proxmark3",
+      "branch": "master",
+      "verified_commit": "6d4ee98d8aa58eeea3b0e5aa49a1c49f59545c14"
+    },
+    {
+      "repo": "MrBoogus/proxmark3",
+      "branch": "master",
+      "verified_commit": "6381b243a7479782f34e536204e148a4c9fda474"
+    }
+  ]
+}

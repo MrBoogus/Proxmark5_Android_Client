@@ -36,7 +36,7 @@ data class Pm5BatteryInfo(
 
     companion object {
         fun fromBytes(payload: ByteArray): Pm5BatteryInfo? {
-            if (payload.size < 18) return null
+            if (payload.size < 19) return null
             val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
 
             val bwmPresent = bb.get() != 0.toByte()
@@ -86,7 +86,7 @@ data class Pm5AutoOffStatus(
 ) {
     companion object {
         fun fromBytes(payload: ByteArray): Pm5AutoOffStatus? {
-            if (payload.size < 16) return null
+            if (payload.size < 15) return null
             val bb = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
             val enabled = bb.get() != 0.toByte()
             val idleS = bb.int.toLong() and 0xFFFFFFFFL

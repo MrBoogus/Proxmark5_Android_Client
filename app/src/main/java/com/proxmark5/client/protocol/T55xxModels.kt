@@ -109,14 +109,14 @@ data class T55xxBlockEntry(
 object T55xxPayloadBuilder {
 
     /**
-     * Builds wire payload for CMD_LF_T55XX_READBL (9 bytes packed)
-     * struct {
-     *   uint32_t pwd;
-     *   uint8_t flags; // page:1, use_pwd:1, downlink_mode:2
-     *   uint8_t blockno;
-     *   bool brute_mem;
-     *   uint8_t rfu[2];
-     * } PACKED payload;
+     * Builds wire payload for CMD_LF_T55XX_READBL (8 bytes packed)
+     * struct p {
+     *   uint32_t password;
+     *   uint8_t  blockno;
+     *   uint8_t  page;
+     *   bool     pwdmode;
+     *   uint8_t  downlink_mode;
+     * } PACKED;
      */
     fun buildReadBlock(
         blockNo: Int,
@@ -126,30 +126,23 @@ object T55xxPayloadBuilder {
         downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED,
         bruteMem: Boolean = false
     ): ByteArray {
-        val bb = ByteBuffer.allocate(9).order(ByteOrder.LITTLE_ENDIAN)
+        val bb = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt((password and 0xFFFFFFFFL).toInt())
-
-        var flags = (page and 1)
-        if (usePwd) flags = flags or 2
-        flags = flags or ((downlinkMode and 3) shl 3)
-        bb.put(flags.toByte())
-
         bb.put((blockNo and 0xFF).toByte())
-        bb.put(if (bruteMem) 1.toByte() else 0.toByte())
-        bb.put(0.toByte())
-        bb.put(0.toByte())
+        bb.put((page and 0x01).toByte())
+        bb.put(if (usePwd) 1.toByte() else 0.toByte())
+        bb.put((downlinkMode and 0x03).toByte())
         return bb.array()
     }
 
     /**
-     * Builds wire payload for CMD_LF_T55XX_WRITEBL (13 bytes packed)
-     * struct {
-     *   uint32_t val;
+     * Builds wire payload for CMD_LF_T55XX_WRITEBL (10 bytes packed t55xx_write_block_t)
+     * typedef struct {
+     *   uint32_t data;
      *   uint32_t pwd;
-     *   uint8_t flags; // page:1, use_pwd:1, test_mode:1, downlink_mode:2
-     *   uint8_t blockno;
-     *   uint8_t rfu[3];
-     * } PACKED payload;
+     *   uint8_t  blockno;
+     *   uint8_t  flags; // 0x01 = PwdMode, 0x02 = Page, 0x04 = testMode, 0x18 = downlink_mode << 3
+     * } PACKED t55xx_write_block_t;
      */
     fun buildWriteBlock(
         blockNo: Int,
@@ -160,20 +153,17 @@ object T55xxPayloadBuilder {
         testMode: Boolean = false,
         downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED
     ): ByteArray {
-        val bb = ByteBuffer.allocate(13).order(ByteOrder.LITTLE_ENDIAN)
+        val bb = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt((value and 0xFFFFFFFFL).toInt())
         bb.putInt((password and 0xFFFFFFFFL).toInt())
+        bb.put((blockNo and 0xFF).toByte())
 
-        var flags = (page and 1)
-        if (usePwd) flags = flags or 2
-        if (testMode) flags = flags or 4
+        var flags = 0
+        if (usePwd) flags = flags or 0x01
+        if ((page and 1) != 0) flags = flags or 0x02
+        if (testMode) flags = flags or 0x04
         flags = flags or ((downlinkMode and 3) shl 3)
         bb.put(flags.toByte())
-
-        bb.put((blockNo and 0xFF).toByte())
-        bb.put(0.toByte())
-        bb.put(0.toByte())
-        bb.put(0.toByte())
         return bb.array()
     }
 

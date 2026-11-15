@@ -1,0 +1,121 @@
+name: Upstream Protocol Watch
+
+on:
+  schedule:
+    # Runs every Monday and Thursday at 06:00 UTC
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'app/src/main/java/com/proxmark5/client/protocol/**'
+      - '.github/scripts/verify_upstream_contract.py'
+      - '.github/upstream-baseline.json'
+      - '.github/workflows/watch-upstream.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify-wire-contract:
+    name: Verify Upstream PM5 Wire Contract (C11 ABI)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Android Client
+        uses: actions/checkout@v4
+
+      - name: Run Self-Test & Verify Upstream Wire Contracts
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          OVERALL_STATUS=0
+          COMBINED_REPORT=$(mktemp)
+          echo "# Upstream Proxmark5 Wire Protocol Contract Report" > "$COMBINED_REPORT"
+          echo "" >> "$COMBINED_REPORT"
+
+          TARGETS_COUNT=$(jq '.targets | length' .github/upstream-baseline.json)
+
+          for i in $(seq 0 $((TARGETS_COUNT - 1))); do
+            UP_REPO=$(jq -r ".targets[$i].repo" .github/upstream-baseline.json)
+            UP_BRANCH=$(jq -r ".targets[$i].branch" .github/upstream-baseline.json)
+            BASE_SHA=$(jq -r ".targets[$i].verified_commit" .github/upstream-baseline.json)
+
+            echo "=== Checking $UP_REPO ($UP_BRANCH) ==="
+            UP_DIR=$(mktemp -d)
+            git clone --quiet --depth 1 --branch "$UP_BRANCH" --filter=blob:none --sparse "https://github.com/${UP_REPO}.git" "$UP_DIR"
+            git -C "$UP_DIR" sparse-checkout set --no-cone \
+              "/include/*" \
+              "/common/*" \
+              "/client/src/uart/*" \
+              "/client/src/cmdbwm.c" \
+              "/armsrc/appmain.c"
+
+            HEAD_SHA=$(git -C "$UP_DIR" rev-parse HEAD)
+            REPORT_FILE=$(mktemp)
+
+            # Run mutation self-test on the first target to guarantee 0 false-positive & 100% precision invariants
+            SELF_TEST_FLAG=""
+            if [ "$i" -eq 0 ]; then
+              SELF_TEST_FLAG="--self-test"
+            fi
+
+            if python3 .github/scripts/verify_upstream_contract.py \
+              --proxmark3-dir "$UP_DIR" \
+              --upstream-repo "$UP_REPO" \
+              --baseline-sha "$BASE_SHA" \
+              --head-sha "$HEAD_SHA" \
+              --markdown-report "$REPORT_FILE" \
+              $SELF_TEST_FLAG; then
+              echo "✅ $UP_REPO ($HEAD_SHA) passed all C11 wire contract assertions."
+            else
+              echo "❌ $UP_REPO ($HEAD_SHA) FAILED wire contract check!"
+              OVERALL_STATUS=1
+            fi
+
+            cat "$REPORT_FILE" >> "$COMBINED_REPORT"
+            echo -e "\n---\n" >> "$COMBINED_REPORT"
+            rm -rf "$UP_DIR" "$REPORT_FILE"
+          done
+
+          cat "$COMBINED_REPORT" >> "$GITHUB_STEP_SUMMARY"
+          cp "$COMBINED_REPORT" /tmp/upstream_contract_report.md
+
+          if [ "$OVERALL_STATUS" -ne 0 ]; then
+            echo "drift_detected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "drift_detected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or Update Drift Alert Issue (Only on Breaking Change)
+        if: steps.verify.outputs.drift_detected == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABEL="upstream-protocol-drift"
+          gh label create "$LABEL" --color "D93F0B" --description "Breaking wire protocol change in upstream proxmark3" --force || true
+
+          EXISTING_ISSUE=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          TITLE="🚨 Upstream Proxmark5 Wire Protocol Drift Detected"
+
+          if [ -n "$EXISTING_ISSUE" ]; then
+            gh issue edit "$EXISTING_ISSUE" --title "$TITLE" --body-file /tmp/upstream_contract_report.md
+            echo "Updated existing drift issue #$EXISTING_ISSUE"
+          else
+            gh issue create --title "$TITLE" --label "$LABEL" --body-file /tmp/upstream_contract_report.md
+          fi
+          exit 1
+
+      - name: Auto-Close Drift Issue When Resolved
+        if: steps.verify.outputs.drift_detected == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LABEL="upstream-protocol-drift"
+          EXISTING_ISSUE=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_ISSUE" ]; then
+            gh issue comment "$EXISTING_ISSUE" --body "✅ All upstream C11 wire protocol assertions are now passing. Closing issue automatically."
+            gh issue close "$EXISTING_ISSUE"
+          fi
