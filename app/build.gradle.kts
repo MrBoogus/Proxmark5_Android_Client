@@ -20,9 +20,9 @@ android {
         applicationId = "com.proxmark5.client"
         minSdk = 26
         targetSdk = 34
-        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.0 -> 10000)
-        versionCode = 10000
-        versionName = "1.0.0"
+        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.1 -> 10001)
+        versionCode = 10001
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -102,4 +102,7 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
 }

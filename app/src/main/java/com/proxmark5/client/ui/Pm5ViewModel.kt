@@ -143,6 +143,18 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                     readAntennaConfig()
                 } else {
                     stopBatteryPolling()
+                    if (state is ConnectionState.Disconnected || state is ConnectionState.Error) {
+                        autoScanJob?.cancel()
+                        dictionaryJob?.cancel()
+                        _uiState.value = _uiState.value.copy(
+                            isBusy = false,
+                            isAutoScanning = false,
+                            isScanningHf = false,
+                            isTuningAntenna = false,
+                            isRunningQcTest = false,
+                            isCheckingPwds = false
+                        )
+                    }
                 }
             }
         }
@@ -234,12 +246,22 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
     @SuppressLint("MissingPermission")
     fun refreshPairedDevices() {
-        val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
-        val sorted = bonded.sortedByDescending {
-            val n = it.name ?: ""
-            n.contains("Proxmark", ignoreCase = true) || n.contains("PM5", ignoreCase = true)
+        try {
+            val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
+            val sorted = bonded.sortedByDescending {
+                val n = try { it.name ?: "" } catch (_: SecurityException) { "" }
+                n.contains("Proxmark", ignoreCase = true) || n.contains("PM5", ignoreCase = true)
+            }
+            _uiState.value = _uiState.value.copy(pairedDevices = sorted)
+        } catch (_: SecurityException) {
+            _uiState.value = _uiState.value.copy(pairedDevices = emptyList())
         }
-        _uiState.value = _uiState.value.copy(pairedDevices = sorted)
+    }
+
+    fun onPermissionsDenied() {
+        _uiState.value = _uiState.value.copy(
+            statusBanner = "Bluetooth permissions denied — grant Nearby Devices permission or use WiFi TCP"
+        )
     }
 
     fun startBleScan() {
@@ -545,7 +567,11 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isBusy = true, cloneStatus = "Cloning ${em.uidHex} to transponder...")
+            _uiState.value = _uiState.value.copy(
+                isBusy = true,
+                lastEm4100Tag = em,
+                cloneStatus = "Cloning ${em.uidHex} to transponder..."
+            )
             val res = pm5Manager.cloneEm4100(
                 uid = em.uidLong,
                 targetChip = _uiState.value.cloneTargetChip,

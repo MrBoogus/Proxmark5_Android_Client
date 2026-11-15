@@ -12,3 +12,5 @@ app/build/
 /captures/
 .externalNativeBuild/
 .cxx/
+docs/media/demo.mp4
+SHA256SUMS.txt

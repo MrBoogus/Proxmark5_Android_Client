@@ -1,0 +1,56 @@
+name: Bug Report
+description: Report a bug, protocol mismatch, or hardware/transport issue on Proxmark5 Android Client
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue! Please include your hardware/firmware details below so we can reproduce it.
+        *(Reminder: Never paste real personal access badge UIDs or keys — mask or replace them with dummy hex.)*
+
+  - type: input
+    id: app_version
+    attributes:
+      label: App Version
+      description: Release tag or git commit SHA (e.g., v1.0.1 / 10001)
+      placeholder: "v1.0.1"
+    validations:
+      required: true
+
+  - type: input
+    id: android_device
+    attributes:
+      label: Android Device & OS Version
+      description: Phone/tablet model and Android version / API level
+      placeholder: "Samsung Galaxy Z Fold / Pixel 8, Android 14 (API 34)"
+    validations:
+      required: true
+
+  - type: input
+    id: pm5_firmware
+    attributes:
+      label: Proxmark5 Firmware & BWM Version
+      description: Output of `hw version` / `hw status` on your Proxmark5
+      placeholder: "Iceman/master/v4.23346-... (BWM V5)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Connection Transport
+      options:
+        - BLE GATT (0xAE86 / 0xAE88)
+        - Wi-Fi TCP (Port 18888)
+        - Offline / UI Only
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce & Observed Behavior
+      description: What did you do, what happened, and what did the Console tab (`Dbprintf` / protocol log) show?
+    validations:
+      required: true

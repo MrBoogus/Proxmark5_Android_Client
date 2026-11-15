@@ -1,0 +1,11 @@
+Proxmark5 Android Client is a native Kotlin and Jetpack Compose hardware studio for the Proxmark5 (AT32F435 + Gowin FPGA) equipped with the ESP32-C2 Battery / Wireless Module (BWM).
+
+Rather than wrapping the full desktop pm3 CLI, it talks the binary PM3a / PM3b Next-Gen (NG) wire protocol directly over Bluetooth Low Energy (GATT service 0xAE86 / characteristic 0xAE88) and Wi-Fi TCP (:18888) with CRC-16/X-25 verification.
+
+Features:
+• Power & Smart Antenna Dashboard: Live BQ27427 fuel-gauge and AW32001E charger telemetry (SoC, mV, mA, temperature, health), swappable antenna I2C 0x51 Register 0x02 capacitor bank & LED control, WS2812 RGB indicator (I2C 0x48), and LF/HF resonance tuning sweep.
+• LF Badge Studio & Cloner: Continuous watch and cyclic auto-scan for EM4100/EM410x, HID Prox, AWID, and IO Prox with 64-bit Manchester transponder cloning (T5577, Q5, EM4305).
+• HF NFC Studio: ISO 14443-A reader decoding 4/7/10-byte UIDs, ATQA, SAK, and ATS across MIFARE Classic, Ultralight / NTAG21x, and MIFARE DESFire.
+• T55xx Suite: Page 0 block reader/writer, dictionary audit, and deterministic White Cloner key calculator.
+• Credential Vault & Protocol Console: Local JSON credential store with export and real-time ANSI-stripped Dbprintf terminal.
+• Adaptive Layout: Supports compact phones/cover screens and unfolded foldable/tablet displays.

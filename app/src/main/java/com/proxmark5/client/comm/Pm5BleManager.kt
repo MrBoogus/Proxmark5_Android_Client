@@ -121,8 +121,8 @@ class Pm5BleManager(
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
             result?.device?.let { dev ->
-                val name = dev.name ?: "Unknown"
-                val addr = dev.address ?: ""
+                val name = try { dev.name ?: "Unknown" } catch (_: SecurityException) { "Unknown" }
+                val addr = try { dev.address ?: "" } catch (_: SecurityException) { "" }
                 val isPm5 = name.contains("Proxmark", ignoreCase = true) ||
                         name.contains("PM5", ignoreCase = true) ||
                         result.scanRecord?.serviceUuids?.any { it.uuid == Pm5Constants.BLE_SERVICE_UUID } == true
@@ -163,6 +163,9 @@ class Pm5BleManager(
 
     @SuppressLint("MissingPermission")
     fun startScan(adapter: BluetoothAdapter?, autoConnect: Boolean = true) {
+        if (autoConnect && _connectionState.value is ConnectionState.Connected) {
+            return
+        }
         scanAdapter = adapter
         autoConnectOnScan = autoConnect
         if (adapter == null || !adapter.isEnabled) {
@@ -221,6 +224,20 @@ class Pm5BleManager(
                     gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     gatt?.requestMtu(512)
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    try {
+                        gatt?.close()
+                    } catch (_: Exception) {}
+                    if (bluetoothGatt === gatt) {
+                        bluetoothGatt = null
+                        dataCharacteristic = null
+                    }
+                    isWatchingHid = false
+                    isWatchingEm4100 = false
+                    isWatchingAwid = false
+                    isWatchingIo = false
+                    frameParser.reset()
+                    pendingTransaction?.cancel()
+                    writeCompletionDeferred?.complete(false)
                     scope.launch {
                         _logFlow.emit("[BLE] Disconnected (status: $status)")
                         _connectionState.value = ConnectionState.Disconnected
@@ -907,8 +924,7 @@ class Pm5BleManager(
             page = page,
             password = password,
             usePwd = usePwd,
-            downlinkMode = downlinkMode,
-            bruteMem = false
+            downlinkMode = downlinkMode
         )
         val resp = executeTransaction(Pm5Constants.CMD_LF_T55XX_READBL, payload, timeoutMs)
             ?: return T55xxReadResult(

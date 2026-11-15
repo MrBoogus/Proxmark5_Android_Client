@@ -1,0 +1,3 @@
+• Aligned T55xx read/write payload structs (CMD_LF_T55XX_READBL 8B, CMD_LF_T55XX_WRITEBL 10B) and BWM telemetry size guards (19B battery, 15B auto-off) with C11 _Static_assert verification.
+• Improved BLE disconnect cleanup and Android 12+ permission-denial handling.
+• Added protocol parser unit tests, GPL-3.0 license, and accurate GATT 0xAE88 / opcode documentation.

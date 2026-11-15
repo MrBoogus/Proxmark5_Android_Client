@@ -1,0 +1,21 @@
+name: Feature Request
+description: Suggest a new Proxmark5 mobile studio feature, card decoder, or hardware control
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What Proxmark5 capability or workflow would you like to see in the Android app?
+    validations:
+      required: true
+
+  - type: textarea
+    id: firmware_details
+    attributes:
+      label: Relevant Firmware Opcodes / Commands (Optional)
+      description: If this maps to an existing `CMD_*` opcode in `include/pm3_cmd.h` or a `pm3` command, list it here.
+      placeholder: "e.g., CMD_HF_ISO15693_READER (0x0310)"
+    validations:
+      required: false

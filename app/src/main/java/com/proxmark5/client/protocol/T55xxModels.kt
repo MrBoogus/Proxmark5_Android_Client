@@ -123,8 +123,7 @@ object T55xxPayloadBuilder {
         page: Int = 0,
         password: Long = 0L,
         usePwd: Boolean = false,
-        downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED,
-        bruteMem: Boolean = false
+        downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED
     ): ByteArray {
         val bb = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt((password and 0xFFFFFFFFL).toInt())

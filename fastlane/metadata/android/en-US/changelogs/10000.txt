@@ -1,0 +1,1 @@
+Initial public release of Proxmark5 Android Client (BLE GATT 0xAE88 & Wi-Fi TCP :18888, Power & Smart Antenna controls, LF Watch/Cloner, HF ISO 14443-A reader, T55xx suite, Vault, and adaptive foldable UI).

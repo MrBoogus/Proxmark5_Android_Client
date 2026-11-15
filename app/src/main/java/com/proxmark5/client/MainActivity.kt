@@ -163,11 +163,23 @@ class MainActivity : ComponentActivity() {
         if (allGranted) {
             viewModel.refreshPairedDevices()
             autoConnectProxmarkIfBonded()
+        } else {
+            viewModel.onPermissionsDenied()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
 
         // Request runtime permissions
         requestPermissionsIfNeeded()
@@ -210,7 +222,18 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        autoConnectProxmarkIfBonded()
+        if (hasRequiredBlePermissions()) {
+            autoConnectProxmarkIfBonded()
+        }
+    }
+
+    private fun hasRequiredBlePermissions(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        }
     }
 
     private fun requestPermissionsIfNeeded() {
@@ -239,7 +262,7 @@ class MainActivity : ComponentActivity() {
             if (viewModel.uiState.value.connectionState is ConnectionState.Disconnected) {
                 viewModel.refreshPairedDevices()
                 val pm5Dev = viewModel.uiState.value.pairedDevices.firstOrNull {
-                    val n = it.name ?: ""
+                    val n = try { it.name ?: "" } catch (_: SecurityException) { "" }
                     n.contains("Proxmark", ignoreCase = true) || n.contains("PM5", ignoreCase = true)
                 }
                 if (pm5Dev != null) {

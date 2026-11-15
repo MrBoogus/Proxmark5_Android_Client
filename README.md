@@ -1,156 +1,214 @@
 # Proxmark5 Android Client
 
-Native Android companion client for the **Proxmark5** (`AT32F435` 288 MHz ARM Cortex-M4 + Gowin FPGA) equipped with the **Battery / Wireless Module (BWM, ESP32-C2)**.
-
-Built in Kotlin and Jetpack Compose, the client communicates directly over **Bluetooth Low Energy (GATT)** and **WiFi (TCP)** using the Proxmark3 `PM3a` / `PM3b` Next-Gen (`NG`) binary framing protocol (`CRC-16/X-25`). It provides direct control over the Proxmark5's power subsystem, swappable smart antenna (`I2C 0x51`), RGB controller (`I2C 0x48`), LF badge demodulators, T55xx transponder programmer, and ISO 14443-A reader, with an adaptive layout supporting both standard handsets and unfolded foldable displays.
-
----
-
-## Interface Gallery
-
-### Unfolded / Tablet Layout (`NavigationRail` + 2-Column Workspace)
-
-| Power & Hardware Telemetry | HF NFC Studio (ISO 14443-A) |
-| :---: | :---: |
-| ![Power & Hardware Dashboard](docs/images/dashboard_unfolded.png) | ![HF NFC Studio](docs/images/hf_nfc_unfolded.png) |
-| **LF Badge Studio & Cloner** | **Credential Vault & JSON Exporter** |
-| ![LF Badge Studio](docs/images/lf_studio_unfolded.png) | ![Credential Vault](docs/images/vault_unfolded.png) |
+**Native Kotlin & Jetpack Compose field studio for the Proxmark5 BWM over Bluetooth Low Energy (BLE) and Wi-Fi — built for quick LF/HF tag reads, T55xx operations, Smart Antenna tuning, and battery/RGB hardware control on your phone.**
 
 <p align="center">
-  <img src="docs/images/console_unfolded.png" width="78%" alt="Protocol Communication Terminal" />
+  <a href="https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest"><img src="https://img.shields.io/github/v/release/MrBoogus/Proxmark5_Android_Client?style=flat-square&color=00E5FF" alt="Latest Release" /></a>
+  <a href="https://github.com/MrBoogus/Proxmark5_Android_Client/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/MrBoogus/Proxmark5_Android_Client/build.yml?branch=main&style=flat-square&label=CI%20Build" alt="CI Build" /></a>
+  <a href="https://github.com/MrBoogus/Proxmark5_Android_Client/actions/workflows/watch-upstream.yml"><img src="https://img.shields.io/github/actions/workflow/status/MrBoogus/Proxmark5_Android_Client/watch-upstream.yml?branch=main&style=flat-square&label=Upstream%20Protocol%20Audit" alt="Upstream Protocol Audit" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=flat-square" alt="License: GPL-3.0" /></a>
+  <img src="https://img.shields.io/badge/Android-8.0%2B%20(API%2026)-00E676?style=flat-square&logo=android" alt="Android 8.0+" />
 </p>
 
-### Folded Cover / Compact Phone Layout
+<p align="center">
+  <img src="docs/media/demo.gif" width="860" alt="Proxmark5 Android Client live hardware demo over BLE" />
+</p>
 
-| HF ISO 14443-A Reader | T55xx Block Map & Password Audit |
-| :---: | :---: |
-| ![Cover Screen HF Reader](docs/images/hf_cover_folded.png) | ![Cover Screen T55xx Suite](docs/images/t55xx_cover_folded.png) |
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────┐                ┌──────────────────────────────────────────┐
-│      Android Host (Jetpack Compose)     │                │         Proxmark5 Hardware Engine        │
-│                                         │                │                                          │
-│  • Adaptive UI (Cover Tabs / NavRail)   │   BLE GATT     │  • ESP32-C2 BWM (BLE 0xAE86 / TCP:18888) │
-│  • PM3a / PM3b NG Frame Parser (X-25)   │ ◄────────────► │  • AT32F435 MCU (288 MHz ARM Cortex-M4)  │
-│  • Mutex-Serialized Transaction Engine  │   MTU 256/512  │  • Gowin FPGA (LF / HF RF Front-End)     │
-│  • Async Dbprintf Stream & Badge Parser │  or TCP:18888  │  • Smart Antenna (0x51) & RGB LED (0x48) │
-│  • Local Credential Vault (JSON)        │                │  • BQ27427 Fuel Gauge & AW32001E Charger │
-└─────────────────────────────────────────┘                └──────────────────────────────────────────┘
-```
-
-### Transport & Framing Specifications
-- **BLE GATT Service**: `0000ae86-0000-1000-8000-00805f9b34fb`
-  - **TX Characteristic (Write / Write Without Response)**: `0000ae87-0000-1000-8000-00805f9b34fb`
-  - **RX Characteristic (Notify)**: `0000ae88-0000-1000-8000-00805f9b34fb`
-  - Negotiates `CONNECTION_PRIORITY_HIGH` and `MTU 512` (253-byte chunk size at MTU 256) with `2M PHY` when supported.
-- **WiFi Transport**: Raw TCP socket stream on port `18888` (default BWM AP/STA host `192.168.4.1`).
-- **Wire Protocol**:
-  - **Command Frame (`PM3a`)**: `0x61334D50` preamble (`4B` LE) + `(length & 0x7FFF) | 0x8000` (`2B` LE) + `cmd` (`2B` LE) + `payload[N]` + `CRC-16/X-25` (`2B` LE).
-  - **Response Frame (`PM3b`)**: `0x62334D50` preamble (`4B` LE) + `(length & 0x7FFF) | ng_bit` (`2B` LE) + `status` (`1B`) + `reason` (`1B`) + `cmd` (`2B` LE) + `payload[N]` + `CRC-16/X-25` (`2B` LE).
+> **Full 1080p Live Hardware Video:** Download or watch `demo.mp4` attached to the [**Latest GitHub Release**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
 
 ---
 
-## Feature & Command Matrix
+## Screenshots
 
-| Workspace | Capabilities | Firmware Command Opcodes |
+### Folded Phone View (`1080×2520`)
+
+| Power, Fuel Gauge & Antenna | LF Studio & Watch Loops | EM4100 Manchester Matrix |
+| :---: | :---: | :---: |
+| <img src="docs/media/screen_power_antenna.png" width="260" alt="Power, Battery Fuel Gauge, Smart Antenna & Resonance Sweep" /> | <img src="docs/media/screen_lf_studio.png" width="260" alt="LF Studio Watch Loops & Cloning" /> | <img src="docs/media/screen_lf_manchester.png" width="260" alt="EM4100 64-Bit Manchester Matrix" /> |
+
+| HF ISO14443A Reader | T55xx Transponder Suite | Live Protocol Console |
+| :---: | :---: | :---: |
+| <img src="docs/media/screen_hf_reader.png" width="260" alt="HF ISO14443A Reader" /> | <img src="docs/media/screen_t55xx_suite.png" width="260" alt="T55xx Transponder Suite" /> | <img src="docs/media/screen_console_logs.png" width="260" alt="Live Protocol Console" /> |
+
+### Unfolded Foldable & Tablet View (`NavigationRail` + 2-Column Adaptive Workspace)
+
+| Unfolded Hardware & Antenna Studio | Unfolded HF DESFire Reader | Unfolded Tag Vault |
+| :---: | :---: | :---: |
+| <img src="docs/media/screen_unfolded_tablet.png" width="290" alt="Unfolded Foldable Workspace" /> | <img src="docs/images/hf_nfc_unfolded.png" width="290" alt="Unfolded HF DESFire Reader" /> | <img src="docs/media/screen_tag_vault.png" width="290" alt="Unfolded Tag Vault" /> |
+
+---
+
+## Why This Exists
+
+This app is **not** a replacement for the full `pm3` command-line client or [`RfidResearchGroup/ProxmarkStudio`](https://github.com/RfidResearchGroup/ProxmarkStudio). Instead, it fills a specific gap: **a zero-dependency native Android companion built specifically around the untethered Proxmark5 BWM hardware**.
+
+When you carry a battery-powered Proxmark5 in the field, you often want to check battery state-of-charge, verify antenna resonance (`125 kHz` vs `134 kHz`, Low-Q vs High-Q), read/clone a badge (EM410x, HID, AWID, IO Prox, T5577), or inspect an ISO14443A UID/SAK without opening a terminal shell or compiling native C binaries on your phone.
+
+| Feature / Approach | **Proxmark5 Android Client** (This Repo) | [**RfidResearchGroup/ProxmarkStudio**](https://github.com/RfidResearchGroup/ProxmarkStudio) | **Termux + `pm3` CLI** | **Walrus** |
+| :--- | :--- | :--- | :--- | :--- |
+| **Primary Goal** | Native touch UI for PM5 BWM hardware & common LF/HF/T55xx workflows | Full-featured cross-platform `pm3` client & scripting environment | Full `pm3` CLI inside an Android Linux chroot/container | Bulk card wallet & cloning workflow manager |
+| **Native PM5 BWM Hardware Controls** | **Full** (`BQ27427` fuel gauge, Smart Antenna `I2C 0x51`, `WS2812` RGB `I2C 0x48`) | Partial / via CLI commands | Via CLI commands (`hw status`, `hw tune`) | None |
+| **Offline Scripting & Lua/Python Plugins** | No (direct binary `PM3a` opcodes only) | **Yes** | **Yes** | No |
+| **Advanced Crypto Attacks** (`hardnested`, `staticnested`, `loclass`) | No (use `pm3` CLI / ProxmarkStudio) | **Yes** | **Yes** | No |
+| **Install Footprint** | Single ~8 MB Kotlin APK | Full client bundle | ~1.5 GB Termux + build toolchain | Single APK (unmaintained for recent Iceman NG) |
+
+---
+
+## Demo Setup (Hardware Testbench)
+
+All screenshots and the live `demo.mp4` / `demo.gif` in this repository were captured on real hardware using the automated script in [`scripts/capture_demo.sh`](scripts/capture_demo.sh):
+
+1. **Proxmark5 BWM** running untethered on internal Li-Po battery (`Iceman/master v4.23346+`), paired over BLE (`58:2A:BD:34:5E:52`) to the Android device.
+2. **Proxmark3 Easy (512 KB)** connected over USB (`/dev/ttyACM0`) to the host workstation and placed facing the PM5 coil to act as a controlled RF signal generator and tag emulator (`hf 14a sim -t 1 -u 11223344`, `hf 14a sim -t 3 -u 04AABBCCDDEE11`, `lf tune`). Only synthetic test UIDs were used.
+3. **Samsung Galaxy Z Fold 6 (`SM-F966B`, Android 15)** connected to the workstation via `adb`, recorded in both folded cover posture (`1080×2520`) and unfolded tablet posture (`1968×2184`) with Android SystemUI Demo Mode enabled for a clean status bar.
+
+---
+
+## Supported Hardware, Firmware & Android Requirements
+
+- **Proxmark Hardware:** Proxmark5 with the **BWM (Bluetooth & Wi-Fi Module)** add-on (`Proxmark5` BLE peripheral or `192.168.4.1:8888` AP).
+- **Proxmark Firmware:** Recent `RfidResearchGroup/proxmark3` (**Iceman fork**) supporting `PM3a` (`COMMANDNG`) binary frames.
+  - Works out of the box with standard stock Iceman firmware flashed onto a Proxmark5.
+  - An automated weekly GitHub Actions workflow ([`.github/workflows/watch-upstream.yml`](.github/workflows/watch-upstream.yml)) compiles upstream RRG/Iceman headers against 178 C11 `_Static_assert` checks ([`.github/scripts/verify_upstream_contract.py`](.github/scripts/verify_upstream_contract.py)) to detect any upstream wire-protocol drift.
+- **Android Version:** **Android 8.0 Oreo (`minSdk 26`) through Android 15 (`targetSdk 35`)**.
+
+### Required Android Permissions
+
+| Permission | Android API | Why It Is Required |
 | :--- | :--- | :--- |
-| **Power & HW** |<ul><li>**BWM Fuel Gauge (`BQ27427`) & Charger (`AW32001E`)**: Live State of Charge (%), cell voltage (`mV`), charge/discharge current (`mA`), pack temperature (`0.1 K` to `°C`), remaining/full capacity (`mAh`), SOH (`%`), charger enable/disable, and `4.1V` battery-longevity ceiling.</li><li>**Swappable Smart Antenna (`I2C 0x51`)**: Controls Register `0x02` for physical LF/HF blue coil LEDs, resonant capacitor banks (`125`, `134`, `250`, `375`, `500 kHz`), and `High Q` / `Low Q` damping.</li><li>**Antenna RGB Controller (`I2C 0x48`)**: Drives the WS2812 indicator LED via `{ R, G, B }` presets (`0,0,0` releases control back to firmware battery status indicator).</li><li>**Resonance Sweep & HW Self-Test**: Executes full LF/HF tank voltage measurement (`125 kHz`, `134 kHz`, `13.56 MHz`, peak divisor) and I2C/mainboard QC diagnostics.</li></ul> | `0x0179` (`CMD_PM5_BWM_GET_BATTERY`)<br/>`0x017A` (`CMD_PM5_BWM_CHG_ENABLE`)<br/>`0x017B` (`CMD_PM5_BWM_CHG_SET_VOLT`)<br/>`0x0170` (`CMD_ANT_CONTROL_WRITE`)<br/>`0x0171` (`CMD_ANT_CONTROL_READ`)<br/>`0x0178` (`CMD_PM5_RGB_SET`)<br/>`0x0400` (`CMD_MEASURE_ANTENNA_TUNING`)<br/>`0x0177` (`CMD_PM5_QC_TEST_HW`) |
-| **LF Studio** |<ul><li>**Continuous Watch & Auto-Scanner**: Cycles or locks onto `HID Prox`, `EM4100 / EM410x`, `AWID`, and `IO Prox` (`XSF`) at 125 kHz, automatically pausing background telemetry polling so `data_available()` does not abort FPGA sampling.</li><li>**Transponder Cloner**: Encodes 5-byte `EM4100` UIDs into 64-bit Manchester frames (9-bit header `111111111`, 10 row-parity nibbles, 4 column-parity bits, stop bit `0`) and programs `T5577`, `T5555 (Q5)`, or `EM4305` targets.</li></ul> | `0x020B` (`CMD_LF_HID_WATCH`)<br/>`0x021C` (`CMD_LF_EM410X_WATCH`)<br/>`0x0221` (`CMD_LF_AWID_WATCH`)<br/>`0x021A` (`CMD_LF_IO_WATCH`)<br/>`0x0211` (`CMD_LF_EM410X_CLONE`)<br/>`0x0104` (`CMD_BREAK_LOOP`) |
-| **HF NFC** |<ul><li>**ISO 14443-A Reader (`13.56 MHz`)**: Issues `ISO14A_CONNECT \| ISO14A_CLEARTRACE` (`iso14a_raw_cmd_t`) and parses `iso14a_card_select_t` responses.</li><li>**Card Classifier**: Identifies 4-, 7-, and 10-byte UIDs, `ATQA`, `SAK`, and `ATS` historical bytes (`MIFARE Classic 1K/4K`, `Ultralight / NTAG21x`, `MIFARE DESFire / ISO 14443-4`, `MIFARE Mini`, `Plus`).</li></ul> | `0x0385` (`CMD_HF_ISO14443A_READER`) |
-| **T55xx Suite** |<ul><li>**Fast MCU ASK Block Reader (`0–7`)**: Reads Page 0 blocks with optional password authentication and AT32 fast MCU ASK demodulation (`0x10` flag).</li><li>**Block Programmer**: Writes 32-bit hex blocks to Page 0 (`0–7`) in standard or password-protected mode.</li><li>**Password Audit & White Cloner Key Generator**: Sweeps common field passwords and computes deterministic handheld cloner passwords from target EM4100 UIDs.</li></ul> | `0x0214` (`CMD_LF_T55XX_READBL`)<br/>`0x0215` (`CMD_LF_T55XX_WRITEBL`)<br/>`0x0216` (`CMD_LF_T55XX_RESET_READ`)<br/>`0x0224` (`CMD_LF_T55XX_WAKEUP`)<br/>`0x0226` (`CMD_LF_T55XX_SET_CONFIG`)<br/>`0x0231` (`CMD_LF_T55XX_DANGERRAW`) |
-| **Vault** |<ul><li>**Persistent Credential Store**: Automatically deduplicates and stores captured LF badges and HF ISO 14443-A cards locally with timestamps, facility codes, card numbers, and format metadata.</li><li>**Clipboard & JSON Export**: One-tap UID copy or full vault JSON export.</li></ul> | Local `SharedPreferences` JSON |
-| **Console** |<ul><li>**Live Protocol & `Dbprintf` Terminal**: Streams asynchronous `CMD_DEBUG_PRINT_STRING` (`0x0100`) firmware logs (stripping the 2-byte flag prefix and ANSI escape codes) alongside BLE/TCP state events and quick diagnostic triggers (`BATT`, `ANT CFG`, `PING`, `BREAK`).</li></ul> | `0x0100` (`CMD_DEBUG_PRINT_STRING`)<br/>`0x0107` (`CMD_VERSION`)<br/>`0x0109` (`CMD_PING`) |
+| `BLUETOOTH_SCAN` | API 31+ (Android 12+) | Discover nearby `Proxmark5` BLE GATT peripherals (`neverForLocation` asserted — never used to derive physical location). |
+| `BLUETOOTH_CONNECT` | API 31+ (Android 12+) | Connect to paired or discovered `Proxmark5` devices and exchange GATT packets on characteristic `0xAE88`. |
+| `BLUETOOTH` / `BLUETOOTH_ADMIN` | API 26–30 (Android 8–11) | Legacy Bluetooth discovery and GATT connection on Android 8–11. |
+| `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | API 26–30 (`maxSdkVersion="30"`) | Required by the Android OS on API 26–30 to return BLE scan results. Not requested on Android 12+. |
+| `INTERNET` / `ACCESS_NETWORK_STATE` | All | Optional TCP socket transport to the Proxmark5 BWM Wi-Fi AP (`192.168.4.1:8888`). The app makes zero external network requests. |
 
 ---
 
-## Swappable Antenna Register Map (`I2C 0x51`, Register `0x02`)
+## Installation & Building from Source
 
-The Proxmark5 swappable antenna board includes an onboard I2C GPIO expander at slave address `0x51` controlled via `CMD_ANT_CONTROL_WRITE` (`0x0170`) and `CMD_ANT_CONTROL_READ` (`0x0171`):
+### Option 1: Install Prebuilt Signed APK (Recommended)
 
-| Bit | Mask | Function | Values |
-| :-: | :-: | :--- | :--- |
-| **7** | `0x80` | `125 kHz` Tuning Capacitor Bank | `1` = Active, `0` = Disconnected |
-| **6** | `0x40` | `134 kHz` Tuning Capacitor Bank | `1` = Active, `0` = Disconnected |
-| **5** | `0x20` | `250 kHz` Tuning Capacitor Bank | `1` = Active, `0` = Disconnected |
-| **4** | `0x10` | `375 kHz` Tuning Capacitor Bank | `1` = Active, `0` = Disconnected |
-| **3** | `0x08` | `500 kHz` Tuning Capacitor Bank | `1` = Active, `0` = Disconnected |
-| **2** | `0x04` | Physical HF Blue LED (Antenna PCB) | `1` = ON, `0` = OFF |
-| **1** | `0x02` | Physical LF Blue LED (Antenna PCB) | `1` = ON, `0` = OFF |
-| **0** | `0x01` | Tank Q-Factor Select | `1` = High Q (Max Range), `0` = Low Q (Fast Edge) |
+1. Download `Proxmark5-Android-Client-v1.0.1-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
+2. Verify the SHA-256 checksum:
+   ```bash
+   sha256sum -c SHA256SUMS.txt
+   ```
+3. Install on your Android device via `adb` or by opening the APK on your phone:
+   ```bash
+   adb install -r Proxmark5-Android-Client-v1.0.1-release.apk
+   ```
 
-*Example*: `Reg 0x02 = 0x87` (`1000 0111b`) enables the `125 kHz` capacitor bank, turns on both `HF` and `LF` blue antenna LEDs, and selects `High Q` mode.
+### Option 2: Build from Source
 
----
-
-## Project Structure
-
-```
-Proxmark5_Android_Client/
-├── app/
-│   ├── build.gradle.kts
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       └── java/com/proxmark5/client/
-│           ├── MainActivity.kt               # Lifecycle, BLE permissions, auto-connect & intent hooks
-│           ├── comm/
-│           │   ├── Pm5BleManager.kt          # BLE GATT (MTU 256/512) & WiFi TCP transport + command engine
-│           │   └── Pm5Transport.kt           # Connection state & discovered device models
-│           ├── data/
-│           │   └── CapturedTag.kt            # Local JSON persistence & credential vault models
-│           ├── protocol/
-│           │   ├── BadgeParser.kt            # Regex decoders for HID, EM410x, AWID, and IO Prox strings
-│           │   ├── Em4100Decoder.kt          # 64-bit Manchester encoder/decoder with row/column parity
-│           │   ├── HfCardDecoder.kt          # ISO 14443-A iso14a_raw_resp_t & iso14a_card_select_t parser
-│           │   ├── Pm5AntennaModels.kt       # I2C 0x51 Register 0x02 bitfield & QC diagnostic models
-│           │   ├── Pm5BatteryModels.kt       # BQ27427 + AW32001E 22-byte telemetry payload decoder
-│           │   ├── Pm5Constants.kt           # Firmware command opcodes, GATT UUIDs, status codes
-│           │   ├── Pm5Crc16.kt               # CRC-16/X-25 implementation (poly 0x1021, reflected)
-│           │   ├── Pm5Frame.kt               # PM3a command builder & PM3b response container
-│           │   ├── Pm5FrameParser.kt         # Streaming byte-ring parser for fragmented BLE/TCP packets
-│           │   └── T55xxModels.kt            # T55xx payload builder, White Cloner keygen, default dictionary
-│           └── ui/
-│               ├── Pm5AppScreen.kt           # Adaptive Compose UI (Cover ScrollableTabRow / Unfolded NavRail)
-│               ├── Pm5ViewModel.kt           # Reactive UI state, battery polling guard, command orchestration
-│               └── theme/                    # Dark hardware aesthetic theme & typography
-└── docs/
-    └── images/                               # Unfolded & cover screen interface captures
-```
-
----
-
-## Building & Installation
-
-### Prerequisites
-- **JDK 17**
-- **Android SDK** (`compileSdk 34`, `minSdk 26` / Android 8.0+)
-
-### Build from Source
+Prerequisites: **JDK 17+** and the **Android SDK (`platforms;android-35`, `build-tools;35.0.0`)**.
 
 ```bash
 git clone https://github.com/MrBoogus/Proxmark5_Android_Client.git
 cd Proxmark5_Android_Client
 
-# Build Debug and Release APKs
-./gradlew assembleDebug assembleRelease
+# Run protocol unit tests
+./gradlew testDebugUnitTest
 
-# Install to connected Android device (Owner profile)
-adb install --user 0 -r app/build/outputs/apk/release/app-release.apk
+# Build Debug and Signed Release APKs
+./gradlew assembleDebug assembleRelease
 ```
 
-Pre-built signed APKs are also available directly on the [**Releases**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases) page.
+The resulting APKs are written to:
+- `app/build/outputs/apk/debug/app-debug.apk`
+- `app/build/outputs/apk/release/app-release.apk`
 
 ---
 
-## Versioning Scheme
+## Features: Tested vs. Experimental
 
-Releases follow **Semantic Versioning (`vMAJOR.MINOR.PATCH`)** mapped to deterministic Android `versionCode` integers:
+| Feature | Status | Details |
+| :--- | :---: | :--- |
+| **BLE GATT Transport (`0xFFE0` / `0xAE88`)** | **Tested** | Auto-connects to bonded `Proxmark5`, negotiates MTU up to 512B, 240B chunked writes, and reassembles fragmented `PM3a` notifications. |
+| **BQ27427 Battery Fuel Gauge & Power (`0x0184`, `0x0185`)** | **Tested** | Live State-of-Charge (`%`), voltage (`mV`), signed current (`mA`), temperature (`°C`), charging toggle, and inactivity sleep timer. |
+| **Smart Antenna Control (`I2C 0x51`, `0x0170` / `0x0171`)** | **Tested** | Independent LF/HF coil blue indicator LEDs, `125 kHz` vs `134 kHz` resonant capacitor switching, and Low-Q / High-Q (`+114%` voltage boost) control. |
+| **Live Antenna Resonance Sweep (`0x0400`)** | **Tested** | Real-time LF `125 kHz`, LF `134 kHz`, and HF `13.56 MHz` peak tank voltage measurement (`mV` -> `V`) and resonant divisor readout. |
+| **WS2812 RGB Co-Processor (`I2C 0x48`, `0x0178`)** | **Tested** | 4-LED RGB color presets, custom RGB sliders, and rainbow sweep on the PM5 BWM LED ring. |
+| **HF ISO14443A Reader (`0x0385`)** | **Tested** | 4-byte, 7-byte, and 10-byte UID extraction, `ATQA`, `SAK`, `ATS`, and chip classification (MIFARE Classic 1K/4K, DESFire, Ultralight/NTAG). |
+| **LF Watch Loops (`0x021C`, `0x020B`, `0x021A`, `0x0221`)** | **Tested** | Continuous polling for EM410x, HID Prox, IO Prox, and AWID with clean `CMD_BREAK_LOOP` (`0x0118`) termination and Wiegand facility/card decoding. |
+| **EM410x 64-Bit Manchester Matrix & Clone (`0x0211`)** | **Tested** | Interactive 64-bit Manchester frame visualizer (9-bit header, row/column even parity, stop bit) and 1-tap cloning to T55x7 / Q5. |
+| **T55xx Suite & White Cloner Keygen (`0x0214`..`0x0231`)** | **Tested** | Page 0 block 0–7 reader, single-block authenticated writer, 52-key password dictionary audit, and deterministic White Cloner password calculator. |
+| **Tag Vault & Protocol Console (`0x0100`, `0x0109`)** | **Tested** | Persistent local tag history with 1-tap JSON clipboard export, `CMD_PING` latency test, and live color-coded `Dbprintf` log viewer. |
+| **Adaptive Foldable & Tablet UI** | **Tested** | Switches automatically between a 1-column `ScrollableTabRow` on phones/cover displays and a `NavigationRail` + 2-column dashboard on unfolded foldables/tablets (`screenWidthDp >= 600dp`). |
+| **Wi-Fi TCP Socket Bridge (`192.168.4.1:8888`)** | **Experimental** | Uses the same `PM3a` framing over a raw TCP socket when connected to the PM5 BWM Wi-Fi access point; primary field testing has focused on BLE. |
 
-$$\text{versionCode} = \text{MAJOR} \times 10000 + \text{MINOR} \times 100 + \text{PATCH}$$
+---
 
-- **`MAJOR`**: Breaking protocol changes or major architectural overhauls (`1.0.0` $\rightarrow$ `10000`).
-- **`MINOR`**: New RF modules, tag technologies, or hardware control capabilities (`1.1.0` $\rightarrow$ `10100`).
-- **`PATCH`**: Bug fixes, UI refinements, and timing adjustments (`1.0.1` $\rightarrow$ `10001`).
+## Binary Wire Protocol Reference (`Pm5Constants.kt`)
+
+Every command exchanged between the app and the Proxmark5 uses the Iceman **COMMANDNG (`PM3a` / `PM3b`)** binary packet format with **CRC-16/X-25** (`poly=0x1021, init=0xFFFF, refin=true, refout=true, xorout=0xFFFF`).
+
+### BLE GATT Profile
+
+| Entity | UUID | Role |
+| :--- | :--- | :--- |
+| **BWM GATT Service** | `0000ffe0-0000-1000-8000-00805f9b34fb` (`0xFFE0`) | Primary Proxmark5 BWM BLE service |
+| **BWM Data Characteristic** | `0000ae88-0000-1000-8000-00805f9b34fb` (`0xAE88`) | Bidirectional **Write + Notify** channel for `PM3a`/`PM3b` frames |
+| **CCCD Descriptor** | `00002902-0000-1000-8000-00805f9b34fb` (`0x2902`) | Enables GATT notifications on `0xAE88` |
+
+### Verified Opcodes (`app/src/main/java/com/proxmark5/client/protocol/Pm5Constants.kt`)
+
+| Constant | Opcode | Payload (TX / RX) | Description |
+| :--- | :---: | :--- | :--- |
+| `CMD_STATUS` | `0x0100` | Variable ASCII | Asynchronous firmware `Dbprintf()` log messages |
+| `CMD_PING` | `0x0109` | 32B TX / 32B RX | Transport link echo & latency test |
+| `CMD_BREAK_LOOP` | `0x0118` | 0B TX | Halts continuous firmware watch loops (`LF_HID_WATCH`, etc.) |
+| `CMD_FPC_SEND_I2C` | `0x0170` | `[addr, len, reg, val...]` | Writes to Smart Antenna (`I2C 0x51`) or BQ27427 |
+| `CMD_FPC_READ_I2C` | `0x0171` | `[addr, wlen, rlen, reg]` | Reads Smart Antenna `I2C 0x51` configuration register (`0x02`) |
+| `CMD_FPC_WS2812_SET_COLOR` | `0x0178` | `[0x48, 0x0E, 0x02, N, R, G, B...]` | Drives the 4 WS2812 RGB LEDs via co-processor `I2C 0x48` |
+| `CMD_PM5_BWM_GET_BATTERY` | `0x0184` | 0B TX (`oldarg` charging) / 19B RX | Reads BQ27427 fuel gauge (`socPct`, `mV`, `mA`, `tempC`) |
+| `CMD_PM5_BWM_AUTO_OFF` | `0x0185` | `oldarg0`op, `oldarg1`ms / 15B RX | Gets or sets the BWM inactivity auto-shutdown timer |
+| `CMD_LF_HID_WATCH` | `0x020B` | 0B TX | Continuous LF HID Proximity polling |
+| `CMD_LF_EM410X_CLONE` | `0x0211` | 6B TX (`card`, `hi`, `lo`) | Writes a 40-bit EM410x ID onto a T55x7 / Q5 tag |
+| `CMD_LF_T55XX_READBL` | `0x0214` | 8B `t55xx_read_block_t` | Reads a 32-bit T55xx block + raw `Dbprintf` extraction |
+| `CMD_LF_T55XX_WRITEBL` | `0x0215` | 10B `t55xx_write_block_t` | Writes a 32-bit T55xx block with optional password |
+| `CMD_LF_T55XX_RESET_READ` | `0x0216` | 0B TX | T55xx reset-read burst |
+| `CMD_LF_IO_WATCH` | `0x021A` | 0B TX | Continuous LF IO Prox polling |
+| `CMD_LF_EM410X_WATCH` | `0x021C` | 0B TX | Continuous LF EM410x polling |
+| `CMD_LF_AWID_WATCH` | `0x0221` | 0B TX | Continuous LF AWID polling |
+| `CMD_LF_T55XX_SET_CONFIG` | `0x0224` | 26B `t55xx_cfg_block_t` | Sets T55xx demodulator parameters (ASK, rate, offset) |
+| `CMD_LF_T55XX_WAKEUP` | `0x0226` | 5B `t55xx_wakeup_t` | Sends AOR wakeup password to a T55xx tag |
+| `CMD_LF_T55XX_CHKPWDS` | `0x0231` | `1 + N×4`B (`N ≤ 13`) | Batch-tests up to 13 T55xx 32-bit passwords per frame |
+| `CMD_HF_ISO14443A_READER` | `0x0385` | `ISO14A_CONNECT` (`0x01`) / 25B+ RX | Selects an ISO14443A card and returns `iso14a_card_select_t` |
+| `CMD_MEASURE_ANTENNA_TUNING` | `0x0400` | 0B TX / 295B RX | Measures LF 125/134 kHz and HF 13.56 MHz coil voltages |
+
+---
+
+## Known Limitations & Roadmap
+
+### Current Limitations
+- **No Offline/Host-Side Crypto Solvers:** Attacks that rely on heavy host-side key recovery (`hf mf hardnested`, `staticnested`, `loclass`, `mfkey32/64`) are not bundled in this APK. Use `pm3` or `ProxmarkStudio` for cryptographic recovery.
+- **LF Watch Tag Parsing Uses Firmware Log Stream:** Consistent with how the Iceman firmware implements `CMD_LF_*_WATCH`, decoded badge IDs during continuous watch mode are parsed from asynchronous `CMD_STATUS` (`0x0100`) messages, and the loop must be stopped with `CMD_BREAK_LOOP` (`0x0118`) before issuing a new command.
+- **T55xx Block Read Requires Tag Demod Configuration:** Before reading T55xx Page 0 blocks (`0x0214`), the app configures standard ASK / `RF/64` parameters (`0x0224`). Non-standard FSK/PSK T55xx configurations are not yet auto-detected on the phone.
+
+### Roadmap
+- [ ] MIFARE Classic sector dump & key-dictionary check (`CMD_HF_MIFARE_READBL` / `CHKKEYS`)
+- [ ] iCLASS / Picopass CSN & configuration block reader
+- [ ] Export/import `.eml` and `.bin` dump files compatible with `pm3` and Flipper Zero (`Proxmark5_FlipperZero_FAP`)
+- [ ] Interactive waveform graph view for raw `CMD_MEASURE_ANTENNA_TUNING` (`256-byte` divisor curve)
+
+---
+
+## Reporting Bugs & Contributing
+
+Found a bug or protocol mismatch? Please open a [**Bug Report**](https://github.com/MrBoogus/Proxmark5_Android_Client/issues/new?template=bug_report.yml) and include:
+1. Your Android device model and Android OS version.
+2. Your Proxmark5 `hw version` output.
+3. The relevant TX/RX lines copied from the **Console** tab.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture details and pull-request guidelines, and [SECURITY.md](SECURITY.md) for responsible-use and vulnerability reporting policies.
+
+---
+
+## Acknowledgements & Transparency
+
+- Built for the [RfidResearchGroup / Iceman Proxmark3](https://github.com/RfidResearchGroup/proxmark3) ecosystem.
+- This application was developed with AI assistance and verified end-to-end on physical Proxmark5 BWM and Proxmark3 Easy hardware.
+
+## License
+
+Licensed under the **GNU General Public License v3.0 (GPL-3.0)** — see [LICENSE](LICENSE) for full terms.
