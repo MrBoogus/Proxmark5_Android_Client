@@ -1,5 +1,6 @@
 package com.proxmark5.client.protocol
 
+import com.proxmark5.client.comm.VersionInfo
 import com.proxmark5.client.data.CapturedTag
 import com.proxmark5.client.data.SoftwareAesGcmVaultAead
 import com.proxmark5.client.data.TagStorageManager
@@ -425,5 +426,104 @@ class ProtocolUnitTest {
         } finally {
             tempFile.delete()
         }
+    }
+
+    private fun hexToBytes(hex: String): ByteArray {
+        val clean = hex.replace(" ", "").trim()
+        return ByteArray(clean.length / 2) { idx ->
+            clean.substring(idx * 2, idx * 2 + 2).toInt(16).toByte()
+        }
+    }
+
+    @Test
+    fun `version info parses real RDV4 and PM5 CMD_VERSION payloads using versionstr_len`() {
+        // Real 479-byte CMD_VERSION (0x0107) payload captured verbatim from PM3 RDV4 over BT RFCOMM
+        val rdv4WireHex =
+            "400a0b27c0790700cf010000205b201b5b33336d41524d1b5b306d205d0a2020" +
+                "426f6f74726f6d2e2e2e2e204963656d616e2f6d61737465722f76342e323333" +
+                "34362d3338342d676532336261306563392d7375737065637420323032362d31" +
+                "312d31302030303a30363a3134203036646636393263340a20204f532e2e2e2e" +
+                "2e2e2e2e2e204963656d616e2f6d61737465722f76342e32333334362d333834" +
+                "2d676532336261306563392d7375737065637420323032362d31312d31302030" +
+                "303a30363a3337203036646636393263340a2020436f6d70696c65722e2e2e20" +
+                "4743432031352e322e300a0a205b201b5b33336d465047411b5b306d205d200a" +
+                "20667067615f706d335f68662e6e636420696d61676520327333307671313030" +
+                "2031302d31312d323032362030303a30353a35360a20667067615f706d335f6c" +
+                "662e6e636420696d616765203273333076713130302031302d31312d32303236" +
+                "2030303a30353a35360a20667067615f706d335f66656c6963612e6e63642069" +
+                "6d616765203273333076713130302031302d31312d323032362030303a30353a" +
+                "35360a20667067615f706d335f68665f31352e6e636420696d61676520327333" +
+                "3076713130302031302d31312d323032362030303a30353a35360000000800"
+
+        val rdv4 = VersionInfo.fromPayload(hexToBytes(rdv4WireHex))
+        assertNotNull(rdv4)
+        assertEquals(0x270B0A40L, rdv4!!.chipId)
+        assertEquals(489920L, rdv4.sectionSize)
+        assertEquals(524288L, rdv4.totalFlashSize)
+        assertTrue(rdv4.versionString.contains("Iceman/master/v4.23346-384-ge23ba0ec9"))
+        assertTrue(rdv4.versionString.contains("fpga_pm3_lf.ncd"))
+        assertFalse(rdv4.versionString.contains("\u001B"))
+
+        // Real PM5 CMD_VERSION wire layout constructed from live PM5 session output
+        val pm5Text = (
+            " [ \u001B[33mARM\u001B[0m ]\n" +
+                "  Bootrom.... Iceman/master/v4.23346-535-gc2a82b45c-suspect 2026-11-12 11:27:30 7c8b10113\n" +
+                "  OS......... Iceman/pm5-cep-improvements/v4.23346-678-gd474...-suspect 2026-11-16 09:23:05 74ae8c706\n" +
+                "  Compiler... GCC 15.2.0\u0000"
+            ).toByteArray(Charsets.UTF_8)
+        val pm5Wire = ByteBuffer.allocate(12 + pm5Text.size + 4)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(0x00004350) // AT32F435 PM5 chip ID
+            .putInt(0x00077AC0)
+            .putInt(pm5Text.size)
+            .put(pm5Text)
+            .putInt(0x00100000) // 1 MB flash
+            .array()
+
+        val pm5 = VersionInfo.fromPayload(pm5Wire)
+        assertNotNull(pm5)
+        assertEquals(0x00004350L, pm5!!.chipId)
+        assertEquals(0x00077AC0L, pm5.sectionSize)
+        assertEquals(0x00100000L, pm5.totalFlashSize)
+        assertTrue(pm5.versionString.contains("pm5-cep-improvements"))
+        assertFalse(pm5.versionString.contains("\u001B"))
+    }
+
+    @Test
+    fun `frame parser reset flushes truncated late bytes before next command frame`() {
+        val frames = mutableListOf<Pm5ResponseFrame>()
+        val parser = Pm5FrameParser(onFrameReceived = { frames.add(it) })
+
+        // Feed a truncated/stale response header as if left behind during BREAK_LOOP
+        val stalePrefix = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(Pm5Constants.RESPONSENG_PREAMBLE_MAGIC)
+            .putShort((20 or 0x8000).toShort())
+            .put(0)
+            .put(0)
+            .putShort(Pm5Constants.CMD_LF_HID_WATCH.toShort())
+            .array()
+        parser.onBytesReceived(stalePrefix, stalePrefix.size)
+        assertTrue(frames.isEmpty())
+
+        // Flush parser as breakLoop() does
+        parser.reset()
+
+        // Next valid PING response frame must decode cleanly without corruption
+        val pingPayload = byteArrayOf(0x11, 0x22, 0x33, 0x44)
+        val freshFrame = ByteBuffer.allocate(10 + pingPayload.size + 2)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .putInt(Pm5Constants.RESPONSENG_PREAMBLE_MAGIC)
+            .putShort((pingPayload.size or 0x8000).toShort())
+            .put(0)
+            .put(0)
+            .putShort(Pm5Constants.CMD_PING.toShort())
+            .put(pingPayload)
+            .putShort(Pm5Constants.RESPONSENG_POSTAMBLE_MAGIC.toShort())
+            .array()
+        parser.onBytesReceived(freshFrame, freshFrame.size)
+
+        assertEquals(1, frames.size)
+        assertEquals(Pm5Constants.CMD_PING, frames[0].cmd)
+        assertArrayEquals(pingPayload, frames[0].payload)
     }
 }

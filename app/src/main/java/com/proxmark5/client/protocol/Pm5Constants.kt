@@ -8,8 +8,12 @@ object Pm5Constants {
     val BLE_DATA_CHAR_UUID: UUID = UUID.fromString("0000ae88-0000-1000-8000-00805f9b34fb")
     val BLE_CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
+    // Classic Bluetooth SPP UUID (HC-05 / HC-06 / RDV4 Blueshark)
+    val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+
     const val DEFAULT_BLE_NAME = "Proxmark5"
     const val DEFAULT_WIFI_PORT = 18888
+    const val CAPABILITIES_VERSION = 13
 
     // Preamble Magic numbers (little-endian wire representation)
     // 0x61334d50 -> "PM3a" (bytes: 0x50, 0x4D, 0x33, 0x61)
@@ -33,7 +37,10 @@ object Pm5Constants {
     const val CMD_VERSION                = 0x0107
     const val CMD_STATUS                 = 0x0108
     const val CMD_PING                   = 0x0109
+    const val CMD_CAPABILITIES           = 0x0112
     const val CMD_BREAK_LOOP             = 0x0118
+    const val CMD_SMART_ATR              = 0x0143
+    const val CMD_FLASHMEM_GET_INFO      = 0x0148
 
     // PM5 Antenna & Hardware Control Opcodes (I2C 0x51 Antenna Board, 0x48 RGB)
     const val CMD_ANT_CONTROL_WRITE      = 0x0170

@@ -48,10 +48,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -80,24 +76,21 @@ class Pm5BleManager(
     private val _antennaConfigFlow = MutableStateFlow<Pm5AntennaConfig?>(null)
     val antennaConfigFlow: StateFlow<Pm5AntennaConfig?> = _antennaConfigFlow.asStateFlow()
 
-    // BLE references
-    private var bluetoothGatt: BluetoothGatt? = null
-    private var dataCharacteristic: BluetoothGattCharacteristic? = null
+    // Active abstracted transport (BLE / Classic BT SPP / USB OTG / WiFi TCP)
+    @Volatile
+    private var activeTransport: ProxmarkTransport? = null
+
+    @Volatile
     private var negotiatedMtu: Int = 23
     private var writeChunkSize: Int = 20
 
-    // WiFi TCP references
-    private var tcpSocket: Socket? = null
-    private var tcpInStream: InputStream? = null
-    private var tcpOutStream: OutputStream? = null
-    private var tcpReadJob: Job? = null
-
-    // Transaction coordination
+    // Transaction & parser synchronization
+    private val parserLock = Any()
     private val transactionMutex = Mutex()
-    private val writeGattMutex = Mutex()
     private var pendingTransaction: CompletableDeferred<Pm5ResponseFrame>? = null
     private var pendingCmd: Int = -1
-    private var writeCompletionDeferred: CompletableDeferred<Boolean>? = null
+    @Volatile
+    private var breakAckDeferred: CompletableDeferred<Pm5ResponseFrame>? = null
 
     // Watch flags
     var isWatchingHid = false; private set
@@ -239,20 +232,24 @@ class Pm5BleManager(
                     gatt?.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     gatt?.requestMtu(512)
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    try {
-                        gatt?.close()
-                    } catch (_: Exception) {}
-                    if (bluetoothGatt === gatt) {
-                        bluetoothGatt = null
-                        dataCharacteristic = null
+                    val activeBle = activeTransport as? BleGattTransport
+                    if (activeBle != null) {
+                        activeBle.close()
+                        if (activeTransport === activeBle) {
+                            activeTransport = null
+                        }
+                    } else {
+                        try {
+                            gatt?.close()
+                        } catch (_: Exception) {}
                     }
                     isWatchingHid = false
                     isWatchingEm4100 = false
                     isWatchingAwid = false
                     isWatchingIo = false
-                    frameParser.reset()
+                    synchronized(parserLock) { frameParser.reset() }
                     pendingTransaction?.cancel()
-                    writeCompletionDeferred?.complete(false)
+                    breakAckDeferred?.cancel()
                     scope.launch {
                         _logFlow.emit("[BLE] Disconnected (status: $status)")
                         _connectionState.value = ConnectionState.Disconnected
@@ -264,6 +261,7 @@ class Pm5BleManager(
             override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
                 negotiatedMtu = mtu
                 writeChunkSize = if (mtu > 23) (mtu - 3) else 20
+                (activeTransport as? BleGattTransport)?.updateChunkSize(writeChunkSize)
                 scope.launch {
                     _logFlow.emit("[BLE] MTU negotiated: $mtu bytes (Chunk size: $writeChunkSize bytes)")
                     _connectionState.value = ConnectionState.Negotiating("Discovering BWM services")
@@ -292,7 +290,13 @@ class Pm5BleManager(
                     return
                 }
 
-                dataCharacteristic = char
+                activeTransport = BleGattTransport(
+                    gatt = gatt,
+                    characteristic = char,
+                    deviceName = devName,
+                    address = device.address,
+                    initialChunkSize = writeChunkSize
+                )
                 val notifSet = gatt.setCharacteristicNotification(char, true)
                 Log.i("PM5Ble", "setCharacteristicNotification on 0xAE88: $notifSet")
                 scope.launch { _logFlow.emit("[BLE] Set notification on 0xAE88: $notifSet") }
@@ -312,7 +316,7 @@ class Pm5BleManager(
                         _connectionState.value = ConnectionState.Connected(
                             deviceName = devName,
                             address = device.address,
-                            transport = "BLE",
+                            transport = TransportKind.BLE_GATT.label,
                             mtu = negotiatedMtu
                         )
                         gattConnectedDeferred.complete(true)
@@ -321,7 +325,7 @@ class Pm5BleManager(
                     _connectionState.value = ConnectionState.Connected(
                         deviceName = devName,
                         address = device.address,
-                        transport = "BLE",
+                        transport = TransportKind.BLE_GATT.label,
                         mtu = negotiatedMtu
                     )
                     gattConnectedDeferred.complete(true)
@@ -336,7 +340,7 @@ class Pm5BleManager(
                 _connectionState.value = ConnectionState.Connected(
                     deviceName = devName,
                     address = device.address,
-                    transport = "BLE",
+                    transport = TransportKind.BLE_GATT.label,
                     mtu = negotiatedMtu
                 )
                 gattConnectedDeferred.complete(true)
@@ -348,7 +352,7 @@ class Pm5BleManager(
                 characteristic: BluetoothGattCharacteristic,
                 value: ByteArray
             ) {
-                frameParser.onBytesReceived(value, value.size)
+                feedParserBytes(value, value.size)
             }
 
             // Android 12 and lower
@@ -360,7 +364,7 @@ class Pm5BleManager(
                 @Suppress("DEPRECATION")
                 val value = characteristic?.value
                 if (value != null && value.isNotEmpty()) {
-                    frameParser.onBytesReceived(value, value.size)
+                    feedParserBytes(value, value.size)
                 }
             }
 
@@ -369,12 +373,12 @@ class Pm5BleManager(
                 characteristic: BluetoothGattCharacteristic?,
                 status: Int
             ) {
-                writeCompletionDeferred?.complete(status == BluetoothGatt.GATT_SUCCESS)
+                // WRITE_TYPE_NO_RESPONSE pacing is handled inside BleGattTransport
             }
         }
 
         try {
-            bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+            device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
         } catch (e: Exception) {
             _connectionState.value = ConnectionState.Error("Failed to initiate BLE connection: ${e.message}")
             return@withContext false
@@ -399,6 +403,56 @@ class Pm5BleManager(
         return@withContext true
     }
 
+    // --- Classic Bluetooth SPP Connection (RDV4 / HC-06) ---
+
+    @SuppressLint("MissingPermission")
+    suspend fun connectClassicBt(
+        device: BluetoothDevice,
+        adapter: BluetoothAdapter? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        disconnect()
+        val devName = try { device.name ?: "PM3-RDV4" } catch (_: SecurityException) { "PM3-RDV4" }
+        val devAddr = try { device.address ?: "" } catch (_: SecurityException) { "" }
+        _connectionState.value = ConnectionState.Connecting(devName)
+        scope.launch { _logFlow.emit("[BT SPP] Connecting to $devName ($devAddr)...") }
+
+        val transport = ClassicBtSppTransport(
+            device = device,
+            adapter = adapter,
+            deviceName = devName,
+            address = devAddr
+        )
+        val ok = transport.connect(
+            scope = scope,
+            onBytesReceived = { bytes, len -> feedParserBytes(bytes, len) },
+            onDisconnected = { reason ->
+                if (activeTransport === transport) {
+                    activeTransport = null
+                }
+                if (_connectionState.value is ConnectionState.Connected) {
+                    _connectionState.value = ConnectionState.Disconnected
+                    scope.launch { _logFlow.emit("[BT SPP] Disconnected (${reason ?: "closed"})") }
+                }
+            }
+        )
+        if (!ok) {
+            disconnect()
+            _connectionState.value = ConnectionState.Error("Classic BT SPP connection failed for $devName")
+            return@withContext false
+        }
+
+        activeTransport = transport
+        writeChunkSize = transport.maxWriteChunkBytes
+        _connectionState.value = ConnectionState.Connected(
+            deviceName = devName,
+            address = devAddr,
+            transport = TransportKind.CLASSIC_BT_SPP.label,
+            mtu = transport.maxWriteChunkBytes
+        )
+        scope.launch { _logFlow.emit("[BT SPP] Connected to $devName ($devAddr)") }
+        true
+    }
+
     // --- WiFi TCP Connection ---
 
     suspend fun connectTcp(host: String, port: Int = Pm5Constants.DEFAULT_WIFI_PORT): Boolean = withContext(Dispatchers.IO) {
@@ -406,83 +460,65 @@ class Pm5BleManager(
         _connectionState.value = ConnectionState.Connecting("WiFi ($host:$port)")
         scope.launch { _logFlow.emit("[WiFi] Connecting to TCP $host:$port...") }
 
-        try {
-            val sock = Socket()
-            sock.connect(InetSocketAddress(host, port), 6000)
-            sock.tcpNoDelay = true
-            tcpSocket = sock
-            tcpInStream = sock.getInputStream()
-            tcpOutStream = sock.getOutputStream()
-
-            _connectionState.value = ConnectionState.Connected(
-                deviceName = "PM5-WiFi",
-                address = "$host:$port",
-                transport = "WiFi TCP",
-                mtu = 4096
-            )
-            writeChunkSize = 4096
-
-            startTcpReading()
-            scope.launch {
-                _logFlow.emit("[WiFi] Connected to BWM TCP server!")
-                delay(300)
-                readBattery()
-            }
-            true
-        } catch (e: Exception) {
-            disconnect()
-            _connectionState.value = ConnectionState.Error("WiFi TCP connection failed: ${e.message}")
-            false
-        }
-    }
-
-    private fun startTcpReading() {
-        tcpReadJob?.cancel()
-        tcpReadJob = scope.launch(Dispatchers.IO) {
-            val buf = ByteArray(2048)
-            try {
-                while (isActive) {
-                    val stream = tcpInStream ?: break
-                    val read = stream.read(buf)
-                    if (read <= 0) break
-                    frameParser.onBytesReceived(buf, read)
+        val transport = WifiTcpTransport(host = host, port = port)
+        val ok = transport.connect(
+            scope = scope,
+            onBytesReceived = { bytes, len -> feedParserBytes(bytes, len) },
+            onDisconnected = { reason ->
+                if (activeTransport === transport) {
+                    activeTransport = null
                 }
-            } catch (_: Exception) {
-            } finally {
                 if (_connectionState.value is ConnectionState.Connected) {
                     _connectionState.value = ConnectionState.Disconnected
-                    _logFlow.emit("[WiFi] TCP stream closed")
+                    scope.launch { _logFlow.emit("[WiFi] ${reason ?: "TCP stream closed"}") }
                 }
             }
+        )
+        if (!ok) {
+            disconnect()
+            _connectionState.value = ConnectionState.Error("WiFi TCP connection failed")
+            return@withContext false
         }
+
+        activeTransport = transport
+        writeChunkSize = transport.maxWriteChunkBytes
+        _connectionState.value = ConnectionState.Connected(
+            deviceName = transport.deviceName,
+            address = transport.address,
+            transport = TransportKind.WIFI_TCP.label,
+            mtu = transport.maxWriteChunkBytes
+        )
+        scope.launch {
+            _logFlow.emit("[WiFi] Connected to BWM TCP server!")
+            delay(300)
+            readBattery()
+        }
+        true
     }
 
     // --- Disconnect & Cleanup ---
 
+    private fun feedParserBytes(bytes: ByteArray, length: Int) {
+        synchronized(parserLock) {
+            frameParser.onBytesReceived(bytes, length)
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun closeTransportsInternal() {
-        tcpReadJob?.cancel()
-        tcpReadJob = null
-        try { tcpInStream?.close() } catch (_: Exception) {}
-        try { tcpOutStream?.close() } catch (_: Exception) {}
-        try { tcpSocket?.close() } catch (_: Exception) {}
-        tcpInStream = null
-        tcpOutStream = null
-        tcpSocket = null
-
         try {
-            bluetoothGatt?.disconnect()
-            bluetoothGatt?.close()
+            activeTransport?.close()
         } catch (_: Exception) {}
-        bluetoothGatt = null
-        dataCharacteristic = null
+        activeTransport = null
 
         pendingTransaction?.cancel()
         pendingTransaction = null
-        writeCompletionDeferred?.complete(false)
-        writeCompletionDeferred = null
+        breakAckDeferred?.cancel()
+        breakAckDeferred = null
 
-        frameParser.reset()
+        synchronized(parserLock) {
+            frameParser.reset()
+        }
         isWatchingHid = false
         isWatchingEm4100 = false
         isWatchingAwid = false
@@ -507,65 +543,9 @@ class Pm5BleManager(
 
     // --- Outbound Packet Transmission ---
 
-    @SuppressLint("MissingPermission")
     suspend fun sendBytes(data: ByteArray): Boolean = withContext(Dispatchers.IO) {
-        // TCP Transport
-        if (tcpSocket != null && tcpOutStream != null) {
-            return@withContext try {
-                tcpOutStream?.write(data)
-                tcpOutStream?.flush()
-                true
-            } catch (e: Exception) {
-                Log.e("PM5Client", "TCP write error: ${e.message}")
-                false
-            }
-        }
-
-        // BLE Transport
-        val gatt = bluetoothGatt ?: return@withContext false
-        val char = dataCharacteristic ?: return@withContext false
-
-        writeGattMutex.withLock {
-            var offset = 0
-            while (offset < data.size) {
-                val chunkSize = minOf(writeChunkSize, data.size - offset)
-                val chunk = data.copyOfRange(offset, offset + chunkSize)
-
-                writeCompletionDeferred = CompletableDeferred()
-                char.writeType = BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-
-                var initiated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == android.bluetooth.BluetoothStatusCodes.SUCCESS
-                } else {
-                    @Suppress("DEPRECATION")
-                    char.value = chunk
-                    @Suppress("DEPRECATION")
-                    gatt.writeCharacteristic(char)
-                }
-
-                if (!initiated) {
-                    Log.w("PM5Ble", "writeCharacteristic not initiated immediately, waiting 35ms and retrying...")
-                    delay(35)
-                    initiated = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        gatt.writeCharacteristic(char, chunk, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) == android.bluetooth.BluetoothStatusCodes.SUCCESS
-                    } else {
-                        @Suppress("DEPRECATION")
-                        char.value = chunk
-                        @Suppress("DEPRECATION")
-                        gatt.writeCharacteristic(char)
-                    }
-                    if (!initiated) {
-                        Log.e("PM5Ble", "writeCharacteristic retry failed")
-                        return@withContext false
-                    }
-                }
-
-                // Minor pacing between chunks for BWM ESP32 UART
-                delay(12)
-                offset += chunkSize
-            }
-            true
-        }
+        val transport = activeTransport ?: return@withContext false
+        transport.write(data)
     }
 
     // --- Transaction Engine ---
@@ -604,11 +584,26 @@ class Pm5BleManager(
             }
         }
 
-        // 3. Pending Transaction match (note: HF 14443A emission happens in readIso14443a() to avoid duplicates)
+        // 3. BigBuf download chunk routing (0x0208)
+        if (cmd == Pm5Constants.CMD_DOWNLOADED_BIGBUF) {
+            onBigBufChunkFrame?.invoke(frame.payload)
+        }
+
+        // 4. Awaited BREAK_LOOP abort frame completion
+        if (cmd != Pm5Constants.CMD_DEBUG_PRINT_STRING &&
+            (status == Pm5Constants.PM3_EOPABORTED || cmd == Pm5Constants.CMD_BREAK_LOOP)
+        ) {
+            breakAckDeferred?.complete(frame)
+        }
+
+        // 5. Pending Transaction match (note: HF 14443A emission happens in readIso14443a() to avoid duplicates)
         if (pendingCmd >= 0 && pendingCmd == cmd) {
             pendingTransaction?.complete(frame)
         }
     }
+
+    @Volatile
+    private var onBigBufChunkFrame: ((ByteArray) -> Unit)? = null
 
     suspend fun executeTransaction(
         cmd: Int,
@@ -830,27 +825,93 @@ class Pm5BleManager(
 
     suspend fun readVersion(): VersionInfo? {
         val resp = executeTransaction(Pm5Constants.CMD_VERSION, null, 3000) ?: return null
-        if (resp.payload.size >= 8) {
-            val bb = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN)
-            val chipId = bb.int.toLong() and 0xFFFFFFFFL
-            val sectionSize = bb.int.toLong() and 0xFFFFFFFFL
-            val verStr = if (bb.hasRemaining()) {
-                val remBytes = ByteArray(bb.remaining())
-                bb.get(remBytes)
-                val raw = String(remBytes, Charsets.US_ASCII)
-                Regex("\\u001B\\[[;\\d]*[A-Za-z]").replace(raw, "").replace("\u0000", "").trim()
-            } else ""
-            return VersionInfo(chipId, sectionSize, verStr)
-        }
-        return null
+        return VersionInfo.fromPayload(resp.payload)
     }
 
-    suspend fun breakLoop() {
-        sendBytes(Pm5CommandFrameBuilder.build(Pm5Constants.CMD_BREAK_LOOP, null))
+    /**
+     * Send CMD_BREAK_LOOP (0x0118), await the abort/EOPABORTED reply frame up to [timeoutMs]
+     * when a loop was active (or when [forceAwait] is true), and reset the frame parser so no
+     * late/partial bytes leak into the next command.
+     */
+    suspend fun breakLoop(timeoutMs: Long = 2000L, forceAwait: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        val wasWatching = isWatchingHid || isWatchingEm4100 || isWatchingAwid || isWatchingIo
         isWatchingHid = false
         isWatchingEm4100 = false
         isWatchingAwid = false
         isWatchingIo = false
+
+        var ackReceived = false
+        transactionMutex.withLock {
+            val deferred = CompletableDeferred<Pm5ResponseFrame>()
+            breakAckDeferred = deferred
+            try {
+                val sent = sendBytes(Pm5CommandFrameBuilder.build(Pm5Constants.CMD_BREAK_LOOP, null))
+                if (sent && (wasWatching || forceAwait)) {
+                    ackReceived = withTimeoutOrNull(timeoutMs) { deferred.await() } != null
+                }
+            } finally {
+                breakAckDeferred = null
+                synchronized(parserLock) {
+                    frameParser.reset()
+                }
+            }
+        }
+        ackReceived
+    }
+
+    /**
+     * Download [length] bytes from device BigBuf starting at [offset] in paced [sliceBytes]
+     * slices (2048 B default) so slow UART bridges like the RDV4 Blueshark BT FIFO never overflow.
+     */
+    suspend fun downloadBigBuf(
+        offset: Int = 0,
+        length: Int = 12000,
+        sliceBytes: Int = 2048,
+        timeoutPerSliceMs: Long = 3000L
+    ): ByteArray? = withContext(Dispatchers.IO) {
+        if (length <= 0) return@withContext ByteArray(0)
+        val out = ByteArray(length)
+        var sliceOffset = 0
+        while (sliceOffset < length) {
+            val want = minOf(sliceBytes, length - sliceOffset)
+            var sliceOk = false
+            for (attempt in 0..1) {
+                val sliceBuf = ByteArray(want)
+                var maxWritten = 0
+                onBigBufChunkFrame = { chunkPayload ->
+                    if (chunkPayload.size > 4) {
+                        val bb = ByteBuffer.wrap(chunkPayload, 0, 4).order(ByteOrder.LITTLE_ENDIAN)
+                        val chunkOff = bb.int
+                        val dataLen = chunkPayload.size - 4
+                        if (chunkOff in 0 until want) {
+                            val copyLen = minOf(dataLen, want - chunkOff)
+                            System.arraycopy(chunkPayload, 4, sliceBuf, chunkOff, copyLen)
+                            maxWritten = maxOf(maxWritten, chunkOff + copyLen)
+                        }
+                    }
+                }
+                val req = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN)
+                    .putInt(offset + sliceOffset)
+                    .putInt(want)
+                    .array()
+                val doneFrame = try {
+                    executeTransaction(Pm5Constants.CMD_DOWNLOAD_BIGBUF, req, timeoutPerSliceMs)
+                } finally {
+                    onBigBufChunkFrame = null
+                }
+                if (doneFrame != null && doneFrame.status.toInt() == Pm5Constants.PM3_SUCCESS && maxWritten >= want) {
+                    System.arraycopy(sliceBuf, 0, out, sliceOffset, want)
+                    sliceOk = true
+                    break
+                }
+                synchronized(parserLock) {
+                    frameParser.reset()
+                }
+            }
+            if (!sliceOk) return@withContext null
+            sliceOffset += want
+        }
+        out
     }
 
     // --- LF Operations ---
