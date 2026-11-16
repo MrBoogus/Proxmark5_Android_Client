@@ -34,6 +34,8 @@ import com.proxmark5.client.protocol.Pm5ResponseFrame
 import com.proxmark5.client.protocol.Rdv4FlashInfo
 import com.proxmark5.client.protocol.SmartcardAtrInfo
 import com.proxmark5.client.protocol.T55xxBlockEntry
+import com.proxmark5.client.protocol.T55xxDemodResult
+import com.proxmark5.client.protocol.T55xxDemodulator
 import com.proxmark5.client.protocol.T55xxPayloadBuilder
 import com.proxmark5.client.protocol.T55xxTimingConfig
 import kotlinx.coroutines.CompletableDeferred
@@ -1155,21 +1157,87 @@ class Pm5BleManager(
 
         val status = resp.status.toInt()
         if (resp.payload.size >= 4) {
-            val bb = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN)
-            val raw = bb.int.toLong() and 0xFFFFFFFFL
-            val hex = "%08X".format(raw)
-            val bin = raw.toString(2).padStart(32, '0')
-            val ascii = rawToAscii(raw)
+            val val1 = ByteBuffer.wrap(resp.payload).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+            val isBlock0 = (blockNo == 0 && page == 0)
+            if (isBlock0 && !T55xxPayloadBuilder.isPlausibleBlock0Config(val1)) {
+                return T55xxReadResult(
+                    blockNo = blockNo,
+                    page = page,
+                    rawValue = null,
+                    hexValue = "—",
+                    binaryValue = "—",
+                    status = Pm5Constants.PM3_EWRONGANSWER,
+                    message = "could not decode"
+                )
+            }
+            val resp2 = executeTransaction(Pm5Constants.CMD_LF_T55XX_READBL, payload, timeoutMs)
+            val val2 = if (resp2 != null && resp2.payload.size >= 4) {
+                ByteBuffer.wrap(resp2.payload).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+            } else {
+                null
+            }
+            if (val2 != null && val2 == val1 && resp2?.status?.toInt() == Pm5Constants.PM3_SUCCESS) {
+                val hex = "%08X".format(val1)
+                val bin = val1.toString(2).padStart(32, '0')
+                val ascii = rawToAscii(val1)
+                return T55xxReadResult(
+                    blockNo = blockNo,
+                    page = page,
+                    rawValue = val1,
+                    hexValue = hex,
+                    binaryValue = bin,
+                    asciiValue = ascii,
+                    status = status,
+                    message = "Read OK (2x Fast MCU ASK)"
+                )
+            }
             return T55xxReadResult(
                 blockNo = blockNo,
                 page = page,
-                rawValue = raw,
-                hexValue = hex,
-                binaryValue = bin,
-                asciiValue = ascii,
-                status = status,
-                message = if (status == Pm5Constants.PM3_SUCCESS) "Read OK (Fast MCU ASK)" else Pm5Constants.statusToString(status)
+                rawValue = null,
+                hexValue = "—",
+                binaryValue = "—",
+                status = Pm5Constants.PM3_EWRONGANSWER,
+                message = "could not decode"
             )
+        }
+
+        // Standard PM3 / RDV4 BigBuf path: never treat an empty payload as a decoded value
+        if (status != Pm5Constants.PM3_SUCCESS) {
+            return T55xxReadResult(
+                blockNo = blockNo,
+                page = page,
+                rawValue = null,
+                hexValue = "—",
+                binaryValue = "—",
+                status = status,
+                message = "could not decode"
+            )
+        }
+
+        val buf1 = downloadBigBuf(0, 12000)
+        val resp2 = if (buf1 != null) executeTransaction(Pm5Constants.CMD_LF_T55XX_READBL, payload, timeoutMs) else null
+        val buf2 = if (resp2 != null && resp2.status.toInt() == Pm5Constants.PM3_SUCCESS) downloadBigBuf(0, 12000) else null
+
+        if (buf1 != null && buf2 != null) {
+            val demod = T55xxDemodulator.verifyTwoReads(
+                read1 = buf1,
+                read2 = buf2,
+                isBlock0 = (blockNo == 0 && page == 0)
+            )
+            if (demod is T55xxDemodResult.Success) {
+                val raw = demod.blockValue
+                return T55xxReadResult(
+                    blockNo = blockNo,
+                    page = page,
+                    rawValue = raw,
+                    hexValue = "%08X".format(raw),
+                    binaryValue = raw.toString(2).padStart(32, '0'),
+                    asciiValue = rawToAscii(raw),
+                    status = Pm5Constants.PM3_SUCCESS,
+                    message = "Verified (2x ${demod.modulation.label} RF/${demod.clock})"
+                )
+            }
         }
 
         return T55xxReadResult(
@@ -1178,9 +1246,33 @@ class Pm5BleManager(
             rawValue = null,
             hexValue = "—",
             binaryValue = "—",
-            status = status,
-            message = Pm5Constants.statusToString(status)
+            status = Pm5Constants.PM3_EWRONGANSWER,
+            message = "could not decode"
         )
+    }
+
+    suspend fun checkT55xxPasswordsInFlash(
+        downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED
+    ): T55xxPwdCheckResult {
+        val resp = executeTransaction(
+            Pm5Constants.CMD_LF_T55XX_CHK_PWDS,
+            T55xxPayloadBuilder.buildCheckPwds(downlinkMode),
+            12000
+        ) ?: return T55xxPwdCheckResult(false, null, null, Pm5Constants.PM3_ETIMEOUT, "SPI Flash password check timed out")
+
+        val status = resp.status.toInt()
+        if (status != Pm5Constants.PM3_SUCCESS || resp.payload.size < 5 || resp.payload[0].toInt() == 0) {
+            return T55xxPwdCheckResult(false, null, null, status, "No matching SPI Flash password")
+        }
+
+        val candidate = ByteBuffer.wrap(resp.payload, 1, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+        val candidateHex = "%08X".format(candidate)
+        val verified = readT55xxBlock(0, 0, candidate, usePwd = true, downlinkMode = downlinkMode)
+        return if (verified.rawValue != null && verified.status == Pm5Constants.PM3_SUCCESS) {
+            T55xxPwdCheckResult(true, candidateHex, candidate, Pm5Constants.PM3_SUCCESS, "Verified SPI Flash key: 0x$candidateHex")
+        } else {
+            T55xxPwdCheckResult(false, null, null, Pm5Constants.PM3_EWRONGANSWER, "could not decode candidate 0x$candidateHex")
+        }
     }
 
     suspend fun writeT55xxBlock(

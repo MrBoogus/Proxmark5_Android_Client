@@ -67,12 +67,12 @@ data class T55xxTimingConfig(
                         write2   = 0,
                         write3   = 0
                     ),
-                    // Mode 2: Leading Zero
+                    // Mode 2: Leading Zero (upstream armsrc/lfops.c:166,172 & cmdlft55xx.c:5445)
                     T55xxModeTiming(
                         startGap = 29 * 8,
                         writeGap = 17 * 8,
                         write0   = 15 * 8,
-                        write1   = 47 * 8,
+                        write1   = 40 * 8, // 320
                         readGap  = 15 * 8,
                         write2   = 0,
                         write3   = 0
@@ -93,6 +93,20 @@ data class T55xxTimingConfig(
         }
     }
 }
+
+data class T55xxDecodedBlock0(
+    val saferKey: Int,
+    val bitRateCode: Int,
+    val bitRateClock: Int?,
+    val xMode: Boolean,
+    val modulationCode: Int,
+    val modulationLabel: String,
+    val aorWakeup: Boolean,
+    val maxBlock: Int,
+    val passwordEnabled: Boolean,
+    val sequenceTerminator: Boolean,
+    val porDelay: Boolean
+)
 
 data class T55xxBlockEntry(
     val blockNo: Int,
@@ -228,47 +242,99 @@ object T55xxPayloadBuilder {
     }
 
     /**
-     * Decodes Atmel T55xx Block 0 configuration register into human-readable description
+     * Builds 1-byte flags payload for CMD_LF_T55XX_CHK_PWDS (0x0230):
+     *   downlink_mode in bits [4:3] (`(downlinkMode & 0x03) << 3`).
+     */
+    fun buildCheckPwds(downlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED): ByteArray {
+        val flags = (downlinkMode and 0x03) shl 3
+        return byteArrayOf(flags.toByte())
+    }
+
+    /**
+     * Decodes Atmel T55x7 Block 0 configuration register per include/protocols.h (lines 815-843).
+     */
+    fun decodeBlock0Structured(config: Long): T55xxDecodedBlock0 {
+        val saferKey = ((config ushr 28) and 0x0FL).toInt()
+        val bitRateCode = ((config ushr 18) and 0x07L).toInt()
+        val xMode = ((config ushr 17) and 0x01L) == 1L
+        val modCode = ((config ushr 12) and 0x1FL).toInt()
+        val aor = ((config ushr 9) and 0x01L) == 1L
+        val maxBlock = ((config ushr 5) and 0x07L).toInt()
+        val pwd = ((config ushr 4) and 0x01L) == 1L
+        val st = ((config ushr 3) and 0x01L) == 1L
+        val por = (config and 0x01L) == 1L
+
+        val bitRateClock = when (bitRateCode) {
+            0 -> 8
+            1 -> 16
+            2 -> 32
+            3 -> 40
+            4 -> 50
+            5 -> 64
+            6 -> 100
+            7 -> 128
+            else -> null
+        }
+
+        val modStr = when (modCode) {
+            0x00 -> "Direct"
+            0x01 -> "PSK1"
+            0x02 -> "PSK2"
+            0x03 -> "PSK3"
+            0x04 -> "FSK1"
+            0x05 -> "FSK2"
+            0x06 -> "FSK1a"
+            0x07 -> "FSK2a"
+            0x08 -> "Manchester"
+            0x10 -> "Biphase"
+            0x18 -> "Diphase"
+            else -> "Mod:0x%02X".format(modCode)
+        }
+
+        return T55xxDecodedBlock0(
+            saferKey = saferKey,
+            bitRateCode = bitRateCode,
+            bitRateClock = bitRateClock,
+            xMode = xMode,
+            modulationCode = modCode,
+            modulationLabel = modStr,
+            aorWakeup = aor,
+            maxBlock = maxBlock,
+            passwordEnabled = pwd,
+            sequenceTerminator = st,
+            porDelay = por
+        )
+    }
+
+    /**
+     * Sanity check ensuring a candidate Block 0 value represents a valid ATA5577 configuration
+     * register (valid safer key, reserved bits zero, recognized modulation & bit-rate).
+     */
+    fun isPlausibleBlock0Config(config: Long): Boolean {
+        if (config == 0L || config == 0xFFFFFFFFL) return false
+        val d = decodeBlock0Structured(config)
+        if (d.saferKey !in setOf(0x0, 0x6, 0x9)) return false
+        val reservedBits = (config ushr 21) and 0x7FL
+        if (reservedBits != 0L) return false
+        val validMod = d.modulationCode in setOf(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x10, 0x18)
+        if (!validMod) return false
+        if (d.bitRateClock == null) return false
+        return d.maxBlock in 0..7
+    }
+
+    /**
+     * Decodes Atmel T55xx Block 0 configuration register into human-readable description.
      */
     fun decodeT55xxBlock0(config: Long): String {
-        val maxBlock = (config shr 4) and 0x07
-        val modBits = ((config shr 12) and 0x0F).toInt()
-        val rateBits = ((config shr 16) and 0x0F).toInt()
-        val pwd = ((config shr 23) and 1) == 1L
-        val aor = ((config shr 21) and 1) == 1L
-
-        val modStr = when (modBits) {
-            0 -> "Direct"
-            1 -> "PSK1"
-            2 -> "PSK2"
-            3 -> "PSK3"
-            4 -> "FSK1"
-            5 -> "FSK2"
-            6 -> "FSK1a"
-            7 -> "FSK2a"
-            8 -> "Manchester"
-            10 -> "Biphase"
-            else -> "Mod:$modBits"
-        }
-
-        val rateStr = when (rateBits) {
-            0 -> "RF/8"
-            1 -> "RF/16"
-            2 -> "RF/32"
-            3 -> "RF/40"
-            4 -> "RF/50"
-            5 -> "RF/64"
-            6 -> "RF/100"
-            7 -> "RF/128"
-            else -> "Rate:$rateBits"
-        }
-
+        val d = decodeBlock0Structured(config)
+        val rateStr = d.bitRateClock?.let { "RF/$it" } ?: "Rate:${d.bitRateCode}"
         val flags = mutableListOf<String>()
-        flags.add(modStr)
+        flags.add(d.modulationLabel)
         flags.add(rateStr)
-        flags.add("MaxBlk:$maxBlock")
-        if (pwd) flags.add("PWD-Protected")
-        if (aor) flags.add("AOR")
+        flags.add("MaxBlk:${d.maxBlock}")
+        if (d.passwordEnabled) flags.add("PWD-Protected")
+        if (d.aorWakeup) flags.add("AOR")
+        if (d.sequenceTerminator) flags.add("ST")
         if (config == 0x00148040L) flags.add("EM4100 Standard")
 
         return flags.joinToString(", ")

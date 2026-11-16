@@ -965,12 +965,13 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             )
 
             val dictionary = T55xxPayloadBuilder.DEFAULT_DICTIONARY
+            val dlMode = _uiState.value.t55xxDownlinkMode
             for ((idx, pwd) in dictionary.withIndex()) {
                 val hex = "%08X".format(pwd)
                 _uiState.value = _uiState.value.copy(
                     chkPwdStatus = str(R.string.status_testing_password_entry, idx, dictionary.size, hex)
                 )
-                val read = pm5Manager.readT55xxBlock(0, 0, pwd, usePwd = true, timeoutMs = 1500)
+                val read = pm5Manager.readT55xxBlock(0, 0, pwd, usePwd = true, downlinkMode = dlMode, timeoutMs = 4000)
                 if (read.rawValue != null && read.status == Pm5Constants.PM3_SUCCESS) {
                     _uiState.value = _uiState.value.copy(
                         isCheckingPwds = false,
