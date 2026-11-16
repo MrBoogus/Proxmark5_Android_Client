@@ -73,6 +73,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -1984,7 +1985,13 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                                 fontFamily = MonospaceFamily
                             )
                             Text(
-                                text = stringResource(R.string.desc_t55xx_map),
+                                text = stringResource(
+                                    if (state.deviceCapabilities.isPm5 || state.connectionState !is ConnectionState.Connected) {
+                                        R.string.desc_t55xx_map
+                                    } else {
+                                        R.string.desc_t55xx_map_verified
+                                    }
+                                ),
                                 fontSize = 11.sp,
                                 color = NeonGreen,
                                 fontFamily = MonospaceFamily
@@ -2057,6 +2064,81 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                                 Text(stringResource(R.string.btn_read), fontSize = 10.sp, fontFamily = MonospaceFamily)
                             }
                         }
+                    }
+
+                    // Page & Downlink Mode selectors
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = DarkOutline)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TargetChipButton(
+                            label = stringResource(R.string.label_page_0),
+                            selected = state.selectedT55xxPage == 0,
+                            onSelect = { viewModel.selectT55xxPage(0) }
+                        )
+                        TargetChipButton(
+                            label = stringResource(R.string.label_page_1),
+                            selected = state.selectedT55xxPage == 1,
+                            onSelect = { viewModel.selectT55xxPage(1) }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.label_downlink_mode),
+                        fontSize = 10.sp,
+                        color = TextMuted,
+                        fontFamily = MonospaceFamily
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val modeLabels = listOf("M0:Fix", "M1:LLR", "M2:Lead0", "M3:1of4")
+                        modeLabels.forEachIndexed { modeIdx, label ->
+                            TargetChipButton(
+                                label = label,
+                                selected = state.t55xxDownlinkMode == modeIdx,
+                                onSelect = { viewModel.setT55xxDownlinkMode(modeIdx) }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = state.t55xxUsePwd,
+                                onCheckedChange = { viewModel.setT55xxUsePwd(it) }
+                            )
+                            Text(stringResource(R.string.label_use_password), fontSize = 11.sp, color = TextPrimary, fontFamily = MonospaceFamily)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = state.t55xxTestMode,
+                                onCheckedChange = { viewModel.setT55xxTestMode(it) }
+                            )
+                            Text(stringResource(R.string.label_test_mode), fontSize = 11.sp, color = WarningAmber, fontFamily = MonospaceFamily)
+                        }
+                    }
+
+                    if (state.t55xxTestMode) {
+                        Text(
+                            text = stringResource(R.string.warning_test_mode),
+                            fontSize = 10.sp,
+                            color = ErrorRed,
+                            fontFamily = MonospaceFamily
+                        )
                     }
                 }
             }
@@ -2152,6 +2234,21 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                     )
                     Spacer(modifier = Modifier.height(6.dp))
 
+                    OutlinedTextField(
+                        value = state.whiteClonerUidHex,
+                        onValueChange = { viewModel.setWhiteClonerUidHex(it) },
+                        label = { Text(stringResource(R.string.hint_white_cloner_uid), fontFamily = MonospaceFamily) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ElectricCyan,
+                            unfocusedBorderColor = DarkOutline,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { viewModel.runPasswordDictionary() },
@@ -2171,10 +2268,7 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                         }
 
                         OutlinedButton(
-                            onClick = {
-                                val uid = state.decodedBadge?.uidHex ?: "0102030405"
-                                viewModel.calculateWhiteClonerKey(uid)
-                            },
+                            onClick = { viewModel.calculateWhiteClonerKey(state.whiteClonerUidHex) },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan),
                             border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.5f))
@@ -2189,6 +2283,35 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = { viewModel.wakeupT55xx() },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonGreen)
+                        ) {
+                            Text(stringResource(R.string.btn_wakeup_aor), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = MonospaceFamily)
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.resetReadT55xx() },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan)
+                        ) {
+                            Text(stringResource(R.string.btn_reset_read), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = MonospaceFamily)
+                        }
+                    }
+
+                    if (state.deviceCapabilities.capabilitiesKnown && state.deviceCapabilities.hwAvailableFlash) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.runFlashPasswordCheck() },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan)
+                        ) {
+                            Text(stringResource(R.string.btn_spi_flash_pwds), fontSize = 11.sp, fontFamily = MonospaceFamily)
+                        }
+                    }
+
                     if (state.chkPwdStatus != null) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
@@ -2197,6 +2320,157 @@ fun T55xxSuiteTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolea
                             fontSize = 12.sp,
                             fontFamily = MonospaceFamily
                         )
+                    }
+                }
+            }
+
+            // Timing Configuration (0x0226) Card
+            val activeModeTiming = state.timingConfig.modes[state.t55xxDownlinkMode.coerceIn(0, 3)]
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = stringResource(R.string.title_t55xx_timing),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = TextPrimary,
+                        fontFamily = MonospaceFamily
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = activeModeTiming.startGap.toString(),
+                            onValueChange = { viewModel.updateTimingForSelectedMode(startGap = it.toIntOrNull()) },
+                            label = { Text("Start", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                        )
+                        OutlinedTextField(
+                            value = activeModeTiming.writeGap.toString(),
+                            onValueChange = { viewModel.updateTimingForSelectedMode(writeGap = it.toIntOrNull()) },
+                            label = { Text("WrGap", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                        )
+                        OutlinedTextField(
+                            value = activeModeTiming.write0.toString(),
+                            onValueChange = { viewModel.updateTimingForSelectedMode(write0 = it.toIntOrNull()) },
+                            label = { Text("Wr0", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                        )
+                        OutlinedTextField(
+                            value = activeModeTiming.write1.toString(),
+                            onValueChange = { viewModel.updateTimingForSelectedMode(write1 = it.toIntOrNull()) },
+                            label = { Text("Wr1", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                        )
+                        OutlinedTextField(
+                            value = activeModeTiming.readGap.toString(),
+                            onValueChange = { viewModel.updateTimingForSelectedMode(readGap = it.toIntOrNull()) },
+                            label = { Text("RdGap", fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.applyT55xxTimingConfig() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan)
+                    ) {
+                        Text(stringResource(R.string.btn_apply_timings), fontSize = 11.sp, fontFamily = MonospaceFamily)
+                    }
+                    state.timingStatus?.let { ts ->
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = ts, fontSize = 10.sp, color = TextSecondary, fontFamily = MonospaceFamily)
+                    }
+                }
+            }
+
+            // Warning-Gated DangerRaw (0x0231) Card — locked & off by default
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
+                border = androidx.compose.foundation.BorderStroke(1.dp, ErrorRed.copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = stringResource(R.string.title_danger_raw),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = ErrorRed,
+                        fontFamily = MonospaceFamily
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.warning_danger_raw),
+                        fontSize = 10.sp,
+                        color = WarningAmber,
+                        fontFamily = MonospaceFamily
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.label_unlock_danger_raw),
+                            fontSize = 10.sp,
+                            color = TextPrimary,
+                            fontFamily = MonospaceFamily,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = state.dangerRawUnlocked,
+                            onCheckedChange = { viewModel.setDangerRawUnlocked(it) },
+                            colors = SwitchDefaults.colors(checkedTrackColor = ErrorRed)
+                        )
+                    }
+                    if (state.dangerRawUnlocked) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedTextField(
+                                value = state.dangerRawBitstream,
+                                onValueChange = { viewModel.setDangerRawBitstream(it) },
+                                label = { Text(stringResource(R.string.hint_danger_bits), fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                                singleLine = true,
+                                modifier = Modifier.weight(2f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                            )
+                            OutlinedTextField(
+                                value = state.dangerRawTimeUs,
+                                onValueChange = { viewModel.setDangerRawTimeUs(it) },
+                                label = { Text(stringResource(R.string.hint_danger_time_us), fontSize = 10.sp, fontFamily = MonospaceFamily) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = { viewModel.executeDangerRaw() },
+                            colors = ButtonDefaults.buttonColors(containerColor = ErrorRed, contentColor = TextPrimary),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(stringResource(R.string.btn_send_danger_raw), fontSize = 11.sp, fontWeight = FontWeight.Bold, fontFamily = MonospaceFamily)
+                        }
+                        state.dangerRawStatus?.let { ds ->
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = ds, fontSize = 10.sp, color = TextSecondary, fontFamily = MonospaceFamily)
+                        }
                     }
                 }
             }

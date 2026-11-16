@@ -117,6 +117,11 @@ class MainActivity : ComponentActivity() {
                     "com.proxmark5.client.RECONNECT_LAST" -> viewModel.reconnectLastDevice()
                     "com.proxmark5.client.READ_RDV4_FLASH" -> viewModel.readRdv4FlashInfo()
                     "com.proxmark5.client.READ_SMARTCARD_ATR" -> viewModel.readSmartcardAtr()
+                    "com.proxmark5.client.T55XX_READ_B0" -> viewModel.readT55xxBlock(0)
+                    "com.proxmark5.client.T55XX_TIMING" -> viewModel.applyT55xxTimingConfig()
+                    "com.proxmark5.client.T55XX_WAKEUP" -> viewModel.wakeupT55xx()
+                    "com.proxmark5.client.T55XX_RESET_READ" -> viewModel.resetReadT55xx()
+                    "com.proxmark5.client.T55XX_FLASH_CHECK" -> viewModel.runFlashPasswordCheck()
                 }
             }
         }
@@ -198,6 +203,11 @@ class MainActivity : ComponentActivity() {
                 addAction("com.proxmark5.client.RECONNECT_LAST")
                 addAction("com.proxmark5.client.READ_RDV4_FLASH")
                 addAction("com.proxmark5.client.READ_SMARTCARD_ATR")
+                addAction("com.proxmark5.client.T55XX_READ_B0")
+                addAction("com.proxmark5.client.T55XX_TIMING")
+                addAction("com.proxmark5.client.T55XX_WAKEUP")
+                addAction("com.proxmark5.client.T55XX_RESET_READ")
+                addAction("com.proxmark5.client.T55XX_FLASH_CHECK")
             }
             ContextCompat.registerReceiver(
                 this,

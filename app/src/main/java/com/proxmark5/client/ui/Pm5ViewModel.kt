@@ -109,6 +109,7 @@ data class Pm5UiState(
     val selectedT55xxPage: Int = 0,
     val t55xxPasswordHex: String = "",
     val t55xxUsePwd: Boolean = false,
+    val t55xxTestMode: Boolean = false,
     val t55xxDownlinkMode: Int = Pm5Constants.T55XX_DLMODE_FIXED,
     val lastReadResult: T55xxReadResult? = null,
     val writeBlockDataHex: String = "",
@@ -116,8 +117,14 @@ data class Pm5UiState(
     val isCheckingPwds: Boolean = false,
     val chkPwdStatus: String? = null,
     val foundPassword: Long? = null,
+    val whiteClonerUidHex: String = "00000000",
     val whiteClonerCalculatedPwd: Long? = null,
     val timingConfig: T55xxTimingConfig = T55xxTimingConfig.defaultTimings(persist = false),
+    val timingStatus: String? = null,
+    val dangerRawUnlocked: Boolean = false,
+    val dangerRawBitstream: String = "",
+    val dangerRawTimeUs: String = "1000",
+    val dangerRawStatus: String? = null,
 
     // Saved Vault & Console Logs
     val savedTags: List<CapturedTag> = emptyList(),
@@ -862,7 +869,16 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setT55xxDownlinkMode(mode: Int) {
-        _uiState.value = _uiState.value.copy(t55xxDownlinkMode = mode)
+        _uiState.value = _uiState.value.copy(t55xxDownlinkMode = mode.coerceIn(0, 3))
+    }
+
+    fun setT55xxTestMode(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(t55xxTestMode = enabled)
+    }
+
+    fun setWhiteClonerUidHex(uidHex: String) {
+        val cleaned = uidHex.filter { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }.take(10).uppercase()
+        _uiState.value = _uiState.value.copy(whiteClonerUidHex = cleaned)
     }
 
     fun setWriteBlockDataHex(dataHex: String) {
@@ -930,12 +946,13 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         }
         val pwd = parsePassword()
         val usePwd = _uiState.value.t55xxUsePwd
+        val testMode = _uiState.value.t55xxTestMode
         val page = _uiState.value.selectedT55xxPage
         val dlMode = _uiState.value.t55xxDownlinkMode
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBusy = true, writeStatus = str(R.string.status_writing_t55xx_block, block))
-            val res = pm5Manager.writeT55xxBlock(block, value, page, pwd, usePwd, false, dlMode)
+            val res = pm5Manager.writeT55xxBlock(block, value, page, pwd, usePwd, testMode, dlMode)
             _uiState.value = _uiState.value.copy(
                 isBusy = false,
                 writeStatus = res.getOrElse { it.message ?: str(R.string.status_write_failed) },
@@ -993,15 +1010,118 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun calculateWhiteClonerKey(uidHex: String) {
+    fun calculateWhiteClonerKey(uidHex: String = _uiState.value.whiteClonerUidHex) {
         val uid = uidHex.toLongOrNull(16) ?: return
         val calculated = T55xxPayloadBuilder.calculateWhiteClonerPassword(uid)
         _uiState.value = _uiState.value.copy(
+            whiteClonerUidHex = uidHex.uppercase(),
             whiteClonerCalculatedPwd = calculated,
             t55xxPasswordHex = "%08X".format(calculated),
             t55xxUsePwd = true,
             statusBanner = str(R.string.status_white_cloner_derived, calculated)
         )
+    }
+
+    fun runFlashPasswordCheck() {
+        if (!_uiState.value.deviceCapabilities.hwAvailableFlash) {
+            _uiState.value = _uiState.value.copy(chkPwdStatus = "SPI Flash dictionary unavailable on this hardware")
+            return
+        }
+        val dlMode = _uiState.value.t55xxDownlinkMode
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isCheckingPwds = true, chkPwdStatus = "Checking RDV4 SPI flash dictionary...")
+            val res = pm5Manager.checkT55xxPasswordsInFlash(dlMode)
+            _uiState.value = _uiState.value.copy(
+                isCheckingPwds = false,
+                foundPassword = res.candidateVal,
+                t55xxPasswordHex = res.candidateHex ?: _uiState.value.t55xxPasswordHex,
+                t55xxUsePwd = res.found || _uiState.value.t55xxUsePwd,
+                chkPwdStatus = res.message,
+                statusBanner = res.message
+            )
+        }
+    }
+
+    fun wakeupT55xx() {
+        val pwd = parsePassword()
+        val dlMode = _uiState.value.t55xxDownlinkMode
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            val res = pm5Manager.wakeupT55xx(pwd, dlMode)
+            val msg = res.getOrElse { it.message ?: "Wakeup failed" }
+            _uiState.value = _uiState.value.copy(isBusy = false, statusBanner = msg, chkPwdStatus = msg)
+        }
+    }
+
+    fun resetReadT55xx() {
+        val dlMode = _uiState.value.t55xxDownlinkMode
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            val res = pm5Manager.resetReadT55xx(dlMode)
+            val msg = res.getOrElse { it.message ?: "Reset read failed" }
+            _uiState.value = _uiState.value.copy(isBusy = false, statusBanner = msg)
+        }
+    }
+
+    fun updateTimingForSelectedMode(
+        startGap: Int? = null,
+        writeGap: Int? = null,
+        write0: Int? = null,
+        write1: Int? = null,
+        readGap: Int? = null
+    ) {
+        val mode = _uiState.value.t55xxDownlinkMode.coerceIn(0, 3)
+        val modes = _uiState.value.timingConfig.modes.toMutableList()
+        val curr = modes[mode]
+        modes[mode] = curr.copy(
+            startGap = startGap ?: curr.startGap,
+            writeGap = writeGap ?: curr.writeGap,
+            write0 = write0 ?: curr.write0,
+            write1 = write1 ?: curr.write1,
+            readGap = readGap ?: curr.readGap
+        )
+        _uiState.value = _uiState.value.copy(timingConfig = _uiState.value.timingConfig.copy(modes = modes))
+    }
+
+    fun applyT55xxTimingConfig() {
+        val cfg = _uiState.value.timingConfig
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            val res = pm5Manager.setT55xxConfig(cfg)
+            val msg = res.getOrElse { it.message ?: "Set config failed" }
+            _uiState.value = _uiState.value.copy(isBusy = false, timingStatus = msg, statusBanner = msg)
+        }
+    }
+
+    fun setDangerRawUnlocked(unlocked: Boolean) {
+        _uiState.value = _uiState.value.copy(dangerRawUnlocked = unlocked)
+    }
+
+    fun setDangerRawBitstream(bits: String) {
+        _uiState.value = _uiState.value.copy(dangerRawBitstream = bits.filter { it == '0' || it == '1' }.take(128))
+    }
+
+    fun setDangerRawTimeUs(timeUs: String) {
+        _uiState.value = _uiState.value.copy(dangerRawTimeUs = timeUs.filter { it.isDigit() }.take(8))
+    }
+
+    fun executeDangerRaw() {
+        val s = _uiState.value
+        if (!s.dangerRawUnlocked) {
+            _uiState.value = s.copy(dangerRawStatus = "Locked: acknowledge warning before sending raw downlink")
+            return
+        }
+        if (s.dangerRawBitstream.isEmpty()) {
+            _uiState.value = s.copy(dangerRawStatus = "Enter binary bits (0/1) first")
+            return
+        }
+        val timeUs = s.dangerRawTimeUs.toLongOrNull() ?: 1000L
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            val res = pm5Manager.dangerRawT55xx(s.dangerRawBitstream, timeUs)
+            val msg = res.getOrElse { it.message ?: "DangerRaw failed" }
+            _uiState.value = _uiState.value.copy(isBusy = false, dangerRawStatus = msg, statusBanner = msg)
+        }
     }
 
     fun breakLoop() {

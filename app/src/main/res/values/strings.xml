@@ -146,6 +146,7 @@
     <!-- T55xx Transponder Suite -->
     <string name="title_t55xx_map">T55XX BLOCK MAP (0 - 7)</string>
     <string name="desc_t55xx_map">AT32 Fast MCU Demodulation Enabled</string>
+    <string name="desc_t55xx_map_verified">Verified 2-Read BigBuf Demodulation</string>
     <string name="btn_read_all_blocks">READ ALL (0-7)</string>
     <string name="label_config_b0_fmt">Config [B0]: %1$s</string>
     <string name="label_blk_fmt">Blk %1$d: %2$s</string>
@@ -153,10 +154,28 @@
     <string name="hint_block_data_hex">Data (8-Hex e.g. 00148040)</string>
     <string name="hint_password_hex">Password (8-Hex)</string>
     <string name="btn_write">WRITE</string>
+    <string name="label_page_0">Page 0</string>
+    <string name="label_page_1">Page 1</string>
+    <string name="label_downlink_mode">Downlink Mode</string>
+    <string name="label_use_password">Use Pwd</string>
+    <string name="label_test_mode">Test Mode</string>
+    <string name="warning_test_mode">Test Mode writes bypass normal transponder checks; verify page &amp; config bits first.</string>
     <string name="title_password_audit">PASSWORD AUDIT &amp; CRACKER</string>
     <string name="btn_cancel_audit">CANCEL AUDIT</string>
     <string name="btn_dictionary_audit">DICTIONARY AUDIT</string>
     <string name="btn_white_cloner_key">WHITE CLONER KEY</string>
+    <string name="hint_white_cloner_uid">Tag UID (8-10 Hex)</string>
+    <string name="btn_spi_flash_pwds">SPI FLASH CHECK (0x0230)</string>
+    <string name="btn_wakeup_aor">WAKEUP AOR (0x0224)</string>
+    <string name="btn_reset_read">RESET READ (0x0216)</string>
+    <string name="title_t55xx_timing">TIMING CONFIG (0x0226)</string>
+    <string name="btn_apply_timings">APPLY TIMINGS (0x0226)</string>
+    <string name="title_danger_raw">DANGER RAW DOWNLINK (0x0231)</string>
+    <string name="warning_danger_raw">WARNING: Sending malformed raw downlink bits can permanently lock or brick a T5577 transponder.</string>
+    <string name="label_unlock_danger_raw">I understand this can brick tags — Unlock</string>
+    <string name="hint_danger_bits">Binary Bits (e.g. 100010)</string>
+    <string name="hint_danger_time_us">Time (µs)</string>
+    <string name="btn_send_danger_raw">SEND RAW DOWNLINK</string>
 
     <!-- Tag Vault -->
     <string name="title_saved_tags_fmt">SAVED BADGES &amp; TAGS (%1$d)</string>
