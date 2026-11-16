@@ -18,6 +18,7 @@ import android.os.Build
 import android.util.Log
 import com.proxmark5.client.protocol.BadgeParser
 import com.proxmark5.client.protocol.DecodedBadge
+import com.proxmark5.client.protocol.DeviceCapabilities
 import com.proxmark5.client.protocol.Em4100Decoder
 import com.proxmark5.client.protocol.Hf14aCard
 import com.proxmark5.client.protocol.HfCardDecoder
@@ -30,6 +31,8 @@ import com.proxmark5.client.protocol.Pm5Constants
 import com.proxmark5.client.protocol.Pm5FrameParser
 import com.proxmark5.client.protocol.Pm5QcTestResult
 import com.proxmark5.client.protocol.Pm5ResponseFrame
+import com.proxmark5.client.protocol.Rdv4FlashInfo
+import com.proxmark5.client.protocol.SmartcardAtrInfo
 import com.proxmark5.client.protocol.T55xxBlockEntry
 import com.proxmark5.client.protocol.T55xxPayloadBuilder
 import com.proxmark5.client.protocol.T55xxTimingConfig
@@ -77,6 +80,9 @@ class Pm5BleManager(
 
     private val _antennaConfigFlow = MutableStateFlow<Pm5AntennaConfig?>(null)
     val antennaConfigFlow: StateFlow<Pm5AntennaConfig?> = _antennaConfigFlow.asStateFlow()
+
+    private val _capabilitiesFlow = MutableStateFlow(DeviceCapabilities.unknown())
+    val capabilitiesFlow: StateFlow<DeviceCapabilities> = _capabilitiesFlow.asStateFlow()
 
     // Active abstracted transport (BLE / Classic BT SPP / USB OTG / WiFi TCP)
     @Volatile
@@ -396,12 +402,6 @@ class Pm5BleManager(
             return@withContext false
         }
 
-        // Post-connection: trigger initial battery telemetry
-        scope.launch {
-            delay(300)
-            readBattery()
-        }
-
         return@withContext true
     }
 
@@ -565,8 +565,6 @@ class Pm5BleManager(
         )
         scope.launch {
             _logFlow.emit("[WiFi] Connected to BWM TCP server!")
-            delay(300)
-            readBattery()
         }
         true
     }
@@ -599,6 +597,8 @@ class Pm5BleManager(
         isWatchingAwid = false
         isWatchingIo = false
         _batteryFlow.value = null
+        _antennaConfigFlow.value = null
+        _capabilitiesFlow.value = DeviceCapabilities.unknown()
         _connectionState.value = ConnectionState.Disconnected
     }
 
@@ -752,9 +752,48 @@ class Pm5BleManager(
         }
     }
 
-    // --- PM5 Hardware & Battery API ---
+    // --- Device Negotiation & Read-Only Peripherals ---
+
+    suspend fun negotiateDevice(): Pair<DeviceCapabilities, VersionInfo?> {
+        val capResp = executeTransaction(Pm5Constants.CMD_CAPABILITIES, null, 2500)
+        val ver = readVersion()
+        val cap = if (capResp != null && capResp.status.toInt() == Pm5Constants.PM3_SUCCESS) {
+            DeviceCapabilities.fromCapabilitiesPayload(capResp.payload, ver)
+        } else {
+            DeviceCapabilities.fromVersionFallback(ver)
+        }
+        _capabilitiesFlow.value = cap
+        scope.launch {
+            _logFlow.emit("[CAP] model=${cap.modelLabel} v=${cap.version} known=${cap.capabilitiesKnown} pm5=${cap.isPm5} rdv4=${cap.isRdv4} bwm=${cap.compiledWithBwm}")
+        }
+        return cap to ver
+    }
+
+    suspend fun readRdv4FlashInfo(): Rdv4FlashInfo? {
+        if (!_capabilitiesFlow.value.hwAvailableFlash) return null
+        val resp = executeTransaction(Pm5Constants.CMD_FLASHMEM_GET_INFO, null, 2500) ?: return null
+        if (resp.status.toInt() != Pm5Constants.PM3_SUCCESS) return null
+        return Rdv4FlashInfo.fromPayload(resp.payload)
+    }
+
+    suspend fun readSmartcardAtr(): SmartcardAtrInfo {
+        if (!_capabilitiesFlow.value.hwAvailableSmartcard) {
+            return SmartcardAtrInfo(false, "—", "Smartcard reader not reported by device")
+        }
+        val resp = executeTransaction(Pm5Constants.CMD_SMART_ATR, null, 3000)
+            ?: return SmartcardAtrInfo(false, "—", "Smartcard ATR timed out")
+        return SmartcardAtrInfo.fromPayload(resp.status.toInt(), resp.payload)
+    }
+
+    private fun isPm5HardwareAllowed(): Boolean {
+        val cap = _capabilitiesFlow.value
+        return cap.capabilitiesKnown && cap.isPm5
+    }
+
+    // --- PM5 Hardware & Battery API (strictly gated to PM5) ---
 
     suspend fun readBattery(): Pm5BatteryInfo? {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return null
         val resp = executeTransaction(Pm5Constants.CMD_PM5_BWM_GET_BATTERY, null, 2500) ?: return null
         val info = Pm5BatteryInfo.fromBytes(resp.payload)
         if (info != null) {
@@ -764,6 +803,7 @@ class Pm5BleManager(
     }
 
     suspend fun setRgbColor(r: Int, g: Int, b: Int): Boolean {
+        if (!isPm5HardwareAllowed()) return false
         val payload = byteArrayOf(
             (r and 0xFF).toByte(),
             (g and 0xFF).toByte(),
@@ -774,6 +814,7 @@ class Pm5BleManager(
     }
 
     suspend fun readAntennaConfig(): Pm5AntennaConfig? {
+        if (!isPm5HardwareAllowed()) return null
         val payload = byteArrayOf(0x01.toByte()) // 1 = map reg
         val resp = executeTransaction(Pm5Constants.CMD_ANT_CONTROL_READ, payload, 2000)
         if (resp != null && resp.status.toInt() == Pm5Constants.PM3_SUCCESS && resp.payload.isNotEmpty()) {
@@ -786,6 +827,7 @@ class Pm5BleManager(
     }
 
     suspend fun writeAntennaConfig(cfg: Pm5AntennaConfig): Boolean {
+        if (!isPm5HardwareAllowed()) return false
         val payload = byteArrayOf(cfg.toByte(), 0x01.toByte()) // byte 0 = data, byte 1 = reg_type (1 = map reg)
         val resp = executeTransaction(Pm5Constants.CMD_ANT_CONTROL_WRITE, payload, 2000)
         val ok = (resp != null && resp.status.toInt() == Pm5Constants.PM3_SUCCESS)
@@ -796,6 +838,7 @@ class Pm5BleManager(
     }
 
     suspend fun setAntennaLeds(lfLed: Boolean, hfLed: Boolean): Boolean {
+        if (!isPm5HardwareAllowed()) return false
         val current = _antennaConfigFlow.value ?: readAntennaConfig() ?: Pm5AntennaConfig()
         val updated = current.copy(
             hfLed = hfLed,
@@ -805,6 +848,7 @@ class Pm5BleManager(
     }
 
     suspend fun setAntennaFreq(freq: String): Boolean {
+        if (!isPm5HardwareAllowed()) return false
         val current = _antennaConfigFlow.value ?: readAntennaConfig() ?: Pm5AntennaConfig()
         val updated = current.copy(
             freq125k = (freq == "125k"),
@@ -817,12 +861,16 @@ class Pm5BleManager(
     }
 
     suspend fun setAntennaQ(highQ: Boolean): Boolean {
+        if (!isPm5HardwareAllowed()) return false
         val current = _antennaConfigFlow.value ?: readAntennaConfig() ?: Pm5AntennaConfig()
         val updated = current.copy(highQ = highQ)
         return writeAntennaConfig(updated)
     }
 
     suspend fun runHardwareQcTest(timeoutMs: Long = 1000): Pm5QcTestResult {
+        if (!isPm5HardwareAllowed()) {
+            return Pm5QcTestResult(false, -1, "HW QC is PM5-only")
+        }
         val bb = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt(timeoutMs.toInt())
         val resp = executeTransaction(Pm5Constants.CMD_PM5_QC_TEST_HW, bb.array(), timeoutMs + 2000)
@@ -842,12 +890,14 @@ class Pm5BleManager(
     }
 
     suspend fun setChargeEnable(enable: Boolean): Boolean {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return false
         val payload = byteArrayOf(if (enable) 1.toByte() else 0.toByte())
         val resp = executeTransaction(Pm5Constants.CMD_PM5_BWM_CHARGE_EN, payload, 2000)
         return resp?.status?.toInt() == Pm5Constants.PM3_SUCCESS
     }
 
     suspend fun setChargeVoltage(millivolts: Int): Boolean {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return false
         val bb = ByteBuffer.allocate(2).order(ByteOrder.LITTLE_ENDIAN)
         bb.putShort((millivolts and 0xFFFF).toShort())
         val resp = executeTransaction(Pm5Constants.CMD_PM5_BWM_SET_VCHG, bb.array(), 2000)
@@ -855,6 +905,7 @@ class Pm5BleManager(
     }
 
     suspend fun setAutoOff(enabled: Boolean, idleSec: Long = 0, unplug: Boolean = true): Boolean {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return false
         val bb = ByteBuffer.allocate(7).order(ByteOrder.LITTLE_ENDIAN)
         bb.put(0x02.toByte()) // SET action
         bb.put(if (enabled) 1.toByte() else 0.toByte())
@@ -865,6 +916,7 @@ class Pm5BleManager(
     }
 
     suspend fun setBleName(name: String): Boolean {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return false
         val nameBytes = name.trim().take(15).toByteArray(Charsets.US_ASCII)
         val payload = ByteArray(1 + nameBytes.size)
         payload[0] = 0x01.toByte() // SET action
@@ -874,6 +926,7 @@ class Pm5BleManager(
     }
 
     suspend fun setPowersave(enabled: Boolean): Boolean {
+        if (!isPm5HardwareAllowed() || !_capabilitiesFlow.value.compiledWithBwm) return false
         val payload = byteArrayOf(0x01.toByte(), if (enabled) 1.toByte() else 0.toByte())
         val resp = executeTransaction(Pm5Constants.CMD_PM5_BWM_POWERSAVE, payload, 2000)
         return resp?.status?.toInt() == Pm5Constants.PM3_SUCCESS

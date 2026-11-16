@@ -104,6 +104,19 @@ class MainActivity : ComponentActivity() {
                     }
                     "com.proxmark5.client.RUN_QC_TEST" -> viewModel.runHardwareQcTest()
                     "com.proxmark5.client.PING" -> viewModel.ping()
+                    "com.proxmark5.client.CONNECT_SPP" -> {
+                        val mac = intent.getStringExtra("mac") ?: "20:24:09:20:02:58"
+                        viewModel.connectClassicBtAddress(mac)
+                    }
+                    "com.proxmark5.client.CONNECT_TCP" -> {
+                        val host = intent.getStringExtra("host") ?: "127.0.0.1"
+                        val port = intent.getStringExtra("port") ?: "18888"
+                        viewModel.connectTcp(host, port)
+                    }
+                    "com.proxmark5.client.DISCONNECT" -> viewModel.disconnect()
+                    "com.proxmark5.client.RECONNECT_LAST" -> viewModel.reconnectLastDevice()
+                    "com.proxmark5.client.READ_RDV4_FLASH" -> viewModel.readRdv4FlashInfo()
+                    "com.proxmark5.client.READ_SMARTCARD_ATR" -> viewModel.readSmartcardAtr()
                 }
             }
         }
@@ -179,6 +192,12 @@ class MainActivity : ComponentActivity() {
                 addAction("com.proxmark5.client.TOGGLE_CHARGE")
                 addAction("com.proxmark5.client.RUN_QC_TEST")
                 addAction("com.proxmark5.client.PING")
+                addAction("com.proxmark5.client.CONNECT_SPP")
+                addAction("com.proxmark5.client.CONNECT_TCP")
+                addAction("com.proxmark5.client.DISCONNECT")
+                addAction("com.proxmark5.client.RECONNECT_LAST")
+                addAction("com.proxmark5.client.READ_RDV4_FLASH")
+                addAction("com.proxmark5.client.READ_SMARTCARD_ATR")
             }
             ContextCompat.registerReceiver(
                 this,
@@ -236,6 +255,9 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             delay(1000)
             if (viewModel.uiState.value.connectionState is ConnectionState.Disconnected) {
+                if (viewModel.reconnectLastDevice()) {
+                    return@launch
+                }
                 viewModel.refreshPairedDevices()
                 val pm5Dev = viewModel.uiState.value.pairedDevices.firstOrNull {
                     val n = try { it.name ?: "" } catch (_: SecurityException) { "" }

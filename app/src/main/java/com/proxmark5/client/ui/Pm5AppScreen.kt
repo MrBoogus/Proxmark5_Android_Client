@@ -65,8 +65,10 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -95,6 +97,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -114,6 +117,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.proxmark5.client.R
 import com.proxmark5.client.comm.ConnectionState
+import com.proxmark5.client.comm.DiscoveredUsbDevice
 import com.proxmark5.client.ui.theme.AccentOrange
 import com.proxmark5.client.ui.theme.CyberPurple
 import com.proxmark5.client.ui.theme.DarkOutline
@@ -178,6 +182,22 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     // Logo and Title
+                    val isRdv4Active = state.connectionState is ConnectionState.Connected &&
+                        state.deviceCapabilities.capabilitiesKnown &&
+                        state.deviceCapabilities.isRdv4
+                    val isGenericPm3Active = state.connectionState is ConnectionState.Connected &&
+                        !state.deviceCapabilities.isPm5 &&
+                        !isRdv4Active
+                    val brandShortRes = when {
+                        isRdv4Active -> R.string.brand_rdv4_short
+                        isGenericPm3Active -> R.string.brand_pm3_short
+                        else -> R.string.brand_short
+                    }
+                    val brandTitleRes = when {
+                        isRdv4Active -> R.string.brand_rdv4_title
+                        isGenericPm3Active -> R.string.brand_pm3_title
+                        else -> R.string.brand_title
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             shape = RoundedCornerShape(6.dp),
@@ -185,7 +205,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             modifier = Modifier.padding(end = 8.dp)
                         ) {
                             Text(
-                                text = stringResource(R.string.brand_short),
+                                text = stringResource(brandShortRes),
                                 color = ElectricCyan,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp,
@@ -194,7 +214,7 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
                             )
                         }
                         Text(
-                            text = stringResource(R.string.brand_title),
+                            text = stringResource(brandTitleRes),
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -341,8 +361,13 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
     ) { innerPadding ->
         val configuration = LocalConfiguration.current
         val isFoldableExpanded = configuration.screenWidthDp >= 600
+        val useHardwareLabel = state.connectionState is ConnectionState.Connected && !state.deviceCapabilities.isPm5
         val navDestinations = listOf(
-            Triple(stringResource(R.string.tab_power_short), stringResource(R.string.tab_power_full), Icons.Filled.Bolt),
+            Triple(
+                stringResource(if (useHardwareLabel) R.string.tab_hardware_short else R.string.tab_power_short),
+                stringResource(if (useHardwareLabel) R.string.tab_hardware_full else R.string.tab_power_full),
+                Icons.Filled.Bolt
+            ),
             Triple(stringResource(R.string.tab_lf_short), stringResource(R.string.tab_lf_full), Icons.Filled.Sensors),
             Triple(stringResource(R.string.tab_hf_short), stringResource(R.string.tab_hf_full), Icons.Filled.Nfc),
             Triple(stringResource(R.string.tab_t55xx_short), stringResource(R.string.tab_t55xx_full), Icons.Filled.Memory),
@@ -519,12 +544,28 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
     }
 
     if (showDevicePicker) {
+        LaunchedEffect(Unit) {
+            viewModel.refreshPairedDevices()
+            viewModel.refreshUsbDevices()
+        }
         DevicePickerDialog(
             state = state,
             onDismiss = { showDevicePicker = false },
+            onReconnectLast = {
+                viewModel.reconnectLastDevice()
+                showDevicePicker = false
+            },
             onSelectDevice = { dev ->
                 viewModel.selectDevice(dev)
                 viewModel.connectSelectedDevice()
+                showDevicePicker = false
+            },
+            onSelectClassicBt = { dev ->
+                viewModel.connectClassicBtDevice(dev)
+                showDevicePicker = false
+            },
+            onSelectUsb = { usb ->
+                viewModel.connectUsbDevice(usb)
                 showDevicePicker = false
             },
             onConnectTcp = { host, port ->
@@ -535,7 +576,10 @@ fun Pm5AppScreen(viewModel: Pm5ViewModel) {
             },
             onStartScan = { viewModel.startBleScan() },
             onStopScan = { viewModel.stopBleScan() },
-            onRefreshPaired = { viewModel.refreshPairedDevices() }
+            onRefreshPaired = {
+                viewModel.refreshPairedDevices()
+                viewModel.refreshUsbDevices()
+            }
         )
     }
 }
@@ -610,17 +654,32 @@ private fun AdaptiveTwoColumnPane(
 
 @Composable
 fun DashboardTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean = false) {
+    val connected = state.connectionState is ConnectionState.Connected
+    val showPm5Cards = !connected || (state.deviceCapabilities.capabilitiesKnown && state.deviceCapabilities.isPm5)
+    val showRdv4Peripherals = connected && state.deviceCapabilities.capabilitiesKnown &&
+        (state.deviceCapabilities.hwAvailableFlash || state.deviceCapabilities.hwAvailableSmartcard)
+
     AdaptiveTwoColumnPane(
         isExpanded = isExpanded,
         leftContent = {
-            BatteryCard(state, viewModel)
-            MainboardRgbCard(state, viewModel)
-            HardwareQcCard(state, viewModel)
+            DeviceIdentityAndLinkCard(state)
+            if (showPm5Cards) {
+                BatteryCard(state, viewModel)
+                MainboardRgbCard(state, viewModel)
+                HardwareQcCard(state, viewModel)
+            }
+            if (showRdv4Peripherals) {
+                Rdv4PeripheralsCard(state, viewModel)
+            }
         },
         rightContent = {
-            AntennaControllerCard(state, viewModel)
+            if (showPm5Cards) {
+                AntennaControllerCard(state, viewModel)
+            }
             AntennaResonanceCard(state, viewModel)
-            ArchitectureCard(state)
+            if (showPm5Cards) {
+                ArchitectureCard(state)
+            }
         }
     )
 }
@@ -628,27 +687,173 @@ fun DashboardTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean
 @Composable
 fun DashboardHardwarePane(state: Pm5UiState, viewModel: Pm5ViewModel, modifier: Modifier = Modifier) {
     val scrollState = rememberScrollState()
+    val connected = state.connectionState is ConnectionState.Connected
+    val showPm5Cards = !connected || (state.deviceCapabilities.capabilitiesKnown && state.deviceCapabilities.isPm5)
+    val showRdv4Peripherals = connected && state.deviceCapabilities.capabilitiesKnown &&
+        (state.deviceCapabilities.hwAvailableFlash || state.deviceCapabilities.hwAvailableSmartcard)
+
     Column(
         modifier = modifier.verticalScroll(scrollState),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // 1. Battery Telemetry & Charger
-        BatteryCard(state, viewModel)
+        DeviceIdentityAndLinkCard(state)
 
-        // 2. Swappable Antenna Controller (0x51) & Physical Blue LEDs
-        AntennaControllerCard(state, viewModel)
+        if (showPm5Cards) {
+            BatteryCard(state, viewModel)
+            AntennaControllerCard(state, viewModel)
+            MainboardRgbCard(state, viewModel)
+        }
 
-        // 3. Mainboard RGB LED Controller (0x48)
-        MainboardRgbCard(state, viewModel)
+        if (showRdv4Peripherals) {
+            Rdv4PeripheralsCard(state, viewModel)
+        }
 
-        // 4. Antenna Resonance Tuning Card
         AntennaResonanceCard(state, viewModel)
 
-        // 5. Hardware QC Diagnostic Card
-        HardwareQcCard(state, viewModel)
+        if (showPm5Cards) {
+            HardwareQcCard(state, viewModel)
+            ArchitectureCard(state)
+        }
+    }
+}
 
-        // 6. PM5 System Architecture
-        ArchitectureCard(state)
+@Composable
+fun DeviceIdentityAndLinkCard(state: Pm5UiState) {
+    val conn = state.connectionState as? ConnectionState.Connected
+    val cap = state.deviceCapabilities
+    val ver = state.versionInfo
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
+        border = androidx.compose.foundation.BorderStroke(1.dp, DarkOutline),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Memory,
+                    contentDescription = stringResource(R.string.cd_device_identity),
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.title_device_identity),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    fontFamily = MonospaceFamily
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                MetricItem("Model", cap.modelLabel)
+                MetricItem("Transport", conn?.transport ?: "Offline")
+                MetricItem(
+                    "Capabilities",
+                    if (cap.capabilitiesKnown) "v${cap.version}" else if (connectedOrNull(conn)) "Fallback" else "—"
+                )
+            }
+            if (cap.capabilitiesKnown) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    MetricItem("BigBuf", "${cap.bigbufSize} B")
+                    MetricItem("Max Frame", "${cap.maxCmdDataSize} B")
+                    MetricItem("Baud", "${cap.baudrate}")
+                }
+            }
+            if (ver != null && ver.versionString.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.label_firmware_version, ver.versionString),
+                    fontSize = 11.sp,
+                    color = NeonGreen,
+                    lineHeight = 15.sp,
+                    fontFamily = MonospaceFamily
+                )
+            }
+        }
+    }
+}
+
+private fun connectedOrNull(conn: ConnectionState.Connected?): Boolean = conn != null
+
+@Composable
+fun Rdv4PeripheralsCard(state: Pm5UiState, viewModel: Pm5ViewModel) {
+    val cap = state.deviceCapabilities
+    Card(
+        colors = CardDefaults.cardColors(containerColor = DarkSurfaceCard),
+        border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.45f)),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Filled.Storage,
+                    contentDescription = stringResource(R.string.cd_rdv4_peripherals),
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.title_rdv4_peripherals),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = TextPrimary,
+                    fontFamily = MonospaceFamily
+                )
+            }
+            Text(
+                text = stringResource(R.string.desc_rdv4_peripherals),
+                fontSize = 11.sp,
+                color = TextMuted,
+                fontFamily = MonospaceFamily
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (cap.hwAvailableFlash) {
+                    OutlinedButton(
+                        onClick = { viewModel.readRdv4FlashInfo() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = ElectricCyan)
+                    ) {
+                        Text(stringResource(R.string.btn_read_flash_info), fontSize = 11.sp, fontFamily = MonospaceFamily)
+                    }
+                }
+                if (cap.hwAvailableSmartcard) {
+                    OutlinedButton(
+                        onClick = { viewModel.readSmartcardAtr() },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonGreen)
+                    ) {
+                        Text(stringResource(R.string.btn_read_smart_atr), fontSize = 11.sp, fontFamily = MonospaceFamily)
+                    }
+                }
+            }
+            state.rdv4FlashInfo?.let { flash ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Flash: ${flash.manufacturerName} (0x%02X / dev 0x%02X, JEDEC 0x%04X, ${flash.totalBytes / 1024} KB)"
+                        .format(flash.manufacturerId, flash.deviceId, flash.jedecId),
+                    fontSize = 11.sp,
+                    color = NeonGreen,
+                    fontFamily = MonospaceFamily
+                )
+            }
+            state.smartcardAtrInfo?.let { atr ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (atr.cardPresent) "Smartcard ATR: ${atr.atrHex}" else "Smartcard: ${atr.message}",
+                    fontSize = 11.sp,
+                    color = if (atr.cardPresent) NeonGreen else TextSecondary,
+                    fontFamily = MonospaceFamily
+                )
+            }
+        }
     }
 }
 
@@ -2319,14 +2524,17 @@ fun TargetChipButton(label: String, selected: Boolean, onSelect: () -> Unit) {
 }
 
 // ==========================================
-// DEVICE PICKER DIALOG (BLE & TCP)
+// DEVICE PICKER DIALOG (BLE, BT SPP, USB & TCP)
 // ==========================================
 
 @Composable
 fun DevicePickerDialog(
     state: Pm5UiState,
     onDismiss: () -> Unit,
+    onReconnectLast: () -> Unit,
     onSelectDevice: (BluetoothDevice) -> Unit,
+    onSelectClassicBt: (BluetoothDevice) -> Unit,
+    onSelectUsb: (DiscoveredUsbDevice) -> Unit,
     onConnectTcp: (String, String) -> Unit,
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
@@ -2334,6 +2542,8 @@ fun DevicePickerDialog(
 ) {
     var tcpHost by remember { mutableStateOf(state.tcpHost) }
     var tcpPort by remember { mutableStateOf(state.tcpPort) }
+    val scrollState = rememberScrollState()
+    val unknownLabel = stringResource(R.string.label_unknown_device)
 
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -2342,9 +2552,13 @@ fun DevicePickerDialog(
             border = androidx.compose.foundation.BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.4f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(12.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .verticalScroll(scrollState)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2362,9 +2576,35 @@ fun DevicePickerDialog(
                     }
                 }
 
+                // Quick Reconnect Last Device
+                state.lastConnectedDevice?.let { saved ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = onReconnectLast,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = NeonGreen),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, NeonGreen.copy(alpha = 0.6f))
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = stringResource(R.string.btn_reconnect_last),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = MonospaceFamily
+                            )
+                            Text(
+                                text = saved.displayLabel,
+                                fontSize = 10.sp,
+                                color = TextSecondary,
+                                fontFamily = MonospaceFamily
+                            )
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // BLE Scan Controls
+                // BLE Scan Controls (PM5 BWM)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -2386,63 +2626,147 @@ fun DevicePickerDialog(
                     }
                 }
 
-                // Device List (Both bonded and scanned)
-                val allDevices = (state.discoveredDevices.map { it.device } + state.pairedDevices).distinctBy { it.address }
-                val unknownLabel = stringResource(R.string.label_unknown_device)
+                val bleDevices = (state.discoveredDevices.map { it.device } + state.pairedDevices.filter { dev ->
+                    val t = try { dev.type } catch (_: SecurityException) { BluetoothDevice.DEVICE_TYPE_UNKNOWN }
+                    t != BluetoothDevice.DEVICE_TYPE_CLASSIC
+                }).distinctBy { it.address }
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                ) {
-                    if (allDevices.isEmpty()) {
-                        item {
-                            Text(
-                                text = stringResource(R.string.no_pm5_found_yet),
-                                color = TextMuted,
-                                fontSize = 11.sp,
-                                fontFamily = MonospaceFamily,
-                                modifier = Modifier.padding(vertical = 16.dp)
-                            )
-                        }
-                    } else {
-                        items(allDevices) { dev ->
-                            @SuppressLint("MissingPermission")
-                            val devName = dev.name ?: unknownLabel
-                            val isPm5 = devName.contains("Proxmark", ignoreCase = true) || devName.contains("PM5", ignoreCase = true)
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onSelectDevice(dev) }
-                                    .padding(vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (isPm5) Icons.Filled.BluetoothConnected else Icons.Filled.Bluetooth,
-                                        contentDescription = stringResource(if (isPm5) R.string.cd_device_proxmark else R.string.cd_device_bluetooth),
-                                        tint = if (isPm5) NeonGreen else TextSecondary,
-                                        modifier = Modifier.size(16.dp)
+                if (bleDevices.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_pm5_found_yet),
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = MonospaceFamily,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                } else {
+                    bleDevices.forEach { dev ->
+                        @SuppressLint("MissingPermission")
+                        val devName = dev.name ?: unknownLabel
+                        val isPm5 = devName.contains("Proxmark", ignoreCase = true) || devName.contains("PM5", ignoreCase = true)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectDevice(dev) }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (isPm5) Icons.Filled.BluetoothConnected else Icons.Filled.Bluetooth,
+                                    contentDescription = stringResource(if (isPm5) R.string.cd_device_proxmark else R.string.cd_device_bluetooth),
+                                    tint = if (isPm5) NeonGreen else TextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = devName,
+                                        fontWeight = if (isPm5) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isPm5) NeonGreen else TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontFamily = MonospaceFamily
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Column {
-                                        Text(
-                                            text = devName,
-                                            fontWeight = if (isPm5) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isPm5) NeonGreen else TextPrimary,
-                                            fontSize = 12.sp,
-                                            fontFamily = MonospaceFamily
-                                        )
-                                        Text(text = dev.address, fontSize = 10.sp, color = TextMuted, fontFamily = MonospaceFamily)
-                                    }
+                                    Text(text = dev.address, fontSize = 10.sp, color = TextMuted, fontFamily = MonospaceFamily)
                                 }
-
-                                Text(stringResource(R.string.btn_connect), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                             }
-                            HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
+                            Text(stringResource(R.string.btn_connect), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
                         }
+                        HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
+                    }
+                }
+
+                // Classic BT SPP (RDV4 Blueshark / HC-06)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(stringResource(R.string.label_classic_bt_spp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = NeonGreen, fontFamily = MonospaceFamily)
+                Spacer(modifier = Modifier.height(4.dp))
+                if (state.classicBtDevices.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_classic_bt_found),
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = MonospaceFamily,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                } else {
+                    state.classicBtDevices.forEach { dev ->
+                        @SuppressLint("MissingPermission")
+                        val devName = dev.name ?: unknownLabel
+                        val isPm3 = devName.contains("PM3", ignoreCase = true) ||
+                            devName.contains("RDV4", ignoreCase = true) ||
+                            devName.contains("Blueshark", ignoreCase = true)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectClassicBt(dev) }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Bluetooth,
+                                    contentDescription = stringResource(R.string.cd_device_bluetooth),
+                                    tint = if (isPm3) NeonGreen else TextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = devName,
+                                        fontWeight = if (isPm3) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isPm3) NeonGreen else TextPrimary,
+                                        fontSize = 12.sp,
+                                        fontFamily = MonospaceFamily
+                                    )
+                                    Text(text = dev.address, fontSize = 10.sp, color = TextMuted, fontFamily = MonospaceFamily)
+                                }
+                            }
+                            Text(stringResource(R.string.btn_connect), fontSize = 11.sp, color = NeonGreen, fontFamily = MonospaceFamily)
+                        }
+                        HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
+                    }
+                }
+
+                // USB OTG Serial (PM3 CDC)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(stringResource(R.string.label_usb_otg), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ElectricCyan, fontFamily = MonospaceFamily)
+                Spacer(modifier = Modifier.height(4.dp))
+                if (state.usbDevices.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_usb_device_found),
+                        color = TextMuted,
+                        fontSize = 11.sp,
+                        fontFamily = MonospaceFamily,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                } else {
+                    state.usbDevices.forEach { usb ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectUsb(usb) }
+                                .padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Usb,
+                                    contentDescription = stringResource(R.string.label_usb_otg),
+                                    tint = ElectricCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(text = usb.name, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 12.sp, fontFamily = MonospaceFamily)
+                                    Text(text = "%04X:%04X %s".format(usb.vendorId, usb.productId, usb.devicePath), fontSize = 10.sp, color = TextMuted, fontFamily = MonospaceFamily)
+                                }
+                            }
+                            Text(stringResource(R.string.btn_connect), fontSize = 11.sp, color = ElectricCyan, fontFamily = MonospaceFamily)
+                        }
+                        HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
                     }
                 }
 

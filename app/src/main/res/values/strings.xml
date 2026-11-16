@@ -4,8 +4,14 @@
     <string name="brand_title">PROXMARK5</string>
 
     <!-- Navigation & Status -->
+    <string name="brand_rdv4_short">RDV4</string>
+    <string name="brand_rdv4_title">PROXMARK3 RDV4</string>
+    <string name="brand_pm3_short">PM3</string>
+    <string name="brand_pm3_title">PROXMARK3</string>
     <string name="tab_power_short">Power</string>
     <string name="tab_power_full">⚡ Power &amp; HW</string>
+    <string name="tab_hardware_short">Hardware</string>
+    <string name="tab_hardware_full">⚡ Hardware</string>
     <string name="tab_lf_short">LF Studio</string>
     <string name="tab_lf_full">📡 LF Studio</string>
     <string name="tab_hf_short">HF NFC</string>
@@ -169,7 +175,19 @@
     <string name="btn_break">BREAK</string>
 
     <!-- Device Picker Dialog -->
-    <string name="title_connect_pm5">CONNECT PROXMARK5</string>
+    <string name="title_connect_pm5">CONNECT PROXMARK</string>
+    <string name="btn_reconnect_last">Reconnect Last Device</string>
+    <string name="label_classic_bt_spp">Classic BT SPP (RDV4 / HC-06)</string>
+    <string name="label_usb_otg">USB OTG Serial (PM3 CDC)</string>
+    <string name="no_classic_bt_found">No paired Classic BT SPP devices found</string>
+    <string name="no_usb_device_found">No USB OTG Proxmark3 device detected</string>
+    <string name="title_device_identity">DEVICE IDENTITY &amp; LINK</string>
+    <string name="title_rdv4_peripherals">RDV4 PERIPHERALS (READ-ONLY)</string>
+    <string name="desc_rdv4_peripherals">Read-only inspection of external SPI flash and ISO 7816 smartcard ATR.</string>
+    <string name="btn_read_flash_info">Read SPI Flash (0x0148)</string>
+    <string name="btn_read_smart_atr">Read Smartcard ATR (0x0143)</string>
+    <string name="cd_rdv4_peripherals">RDV4 read-only peripherals</string>
+    <string name="cd_device_identity">Device identity and capabilities</string>
     <string name="label_ble_devices">BLE Devices</string>
     <string name="btn_stop">Stop</string>
     <string name="btn_scan">Scan</string>

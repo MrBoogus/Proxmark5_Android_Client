@@ -15,15 +15,22 @@ import androidx.lifecycle.viewModelScope
 import com.proxmark5.client.R
 import com.proxmark5.client.comm.ConnectionState
 import com.proxmark5.client.comm.DiscoveredBleDevice
+import com.proxmark5.client.comm.DiscoveredUsbDevice
+import com.proxmark5.client.comm.LastDeviceRecord
+import com.proxmark5.client.comm.LastDeviceStore
 import com.proxmark5.client.comm.Pm5BleManager
 import com.proxmark5.client.comm.T55xxPwdCheckResult
 import com.proxmark5.client.comm.T55xxReadResult
+import com.proxmark5.client.comm.TransportKind
 import com.proxmark5.client.comm.VersionInfo
 import com.proxmark5.client.data.CapturedTag
 import com.proxmark5.client.data.TagStorageManager
 import com.proxmark5.client.data.VaultResult
 import com.proxmark5.client.protocol.DecodedBadge
+import com.proxmark5.client.protocol.DeviceCapabilities
 import com.proxmark5.client.protocol.Em4100Decoder
+import com.proxmark5.client.protocol.Rdv4FlashInfo
+import com.proxmark5.client.protocol.SmartcardAtrInfo
 import com.proxmark5.client.protocol.Em4100Tag
 import com.proxmark5.client.protocol.Hf14aCard
 import com.proxmark5.client.protocol.Pm5AntennaConfig
@@ -46,14 +53,20 @@ import kotlinx.coroutines.withContext
 
 data class Pm5UiState(
     val pairedDevices: List<BluetoothDevice> = emptyList(),
+    val classicBtDevices: List<BluetoothDevice> = emptyList(),
+    val usbDevices: List<DiscoveredUsbDevice> = emptyList(),
     val discoveredDevices: List<DiscoveredBleDevice> = emptyList(),
     val selectedDevice: BluetoothDevice? = null,
+    val lastConnectedDevice: LastDeviceRecord? = null,
     val connectionState: ConnectionState = ConnectionState.Disconnected,
     val tcpHost: String = "192.168.4.1",
     val tcpPort: String = "18888",
     val isBusy: Boolean = false,
     val statusBanner: String? = null,
     val versionInfo: VersionInfo? = null,
+    val deviceCapabilities: DeviceCapabilities = DeviceCapabilities.unknown(),
+    val rdv4FlashInfo: Rdv4FlashInfo? = null,
+    val smartcardAtrInfo: SmartcardAtrInfo? = null,
 
     // Navigation Tab
     // 0: Dashboard & Power, 1: LF Badge Studio, 2: HF NFC Studio, 3: T55xx Suite, 4: Tag Vault, 5: Terminal
@@ -121,6 +134,7 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
 
     val pm5Manager = Pm5BleManager(application, viewModelScope)
     private val storageManager = TagStorageManager(application)
+    private val lastDeviceStore = LastDeviceStore(application)
 
     private val _uiState = MutableStateFlow(Pm5UiState())
     val uiState: StateFlow<Pm5UiState> = _uiState.asStateFlow()
@@ -136,8 +150,16 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().resources.getQuantityString(resId, quantity, *args)
 
     init {
+        _uiState.value = _uiState.value.copy(lastConnectedDevice = lastDeviceStore.load())
         refreshPairedDevices()
+        refreshUsbDevices()
         loadSavedTags()
+
+        viewModelScope.launch {
+            pm5Manager.capabilitiesFlow.collect { cap ->
+                _uiState.value = _uiState.value.copy(deviceCapabilities = cap)
+            }
+        }
 
         // Observe connection state
         viewModelScope.launch {
@@ -150,9 +172,8 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                     isWatchingIo = pm5Manager.isWatchingIo
                 )
                 if (state is ConnectionState.Connected) {
-                    startBatteryPolling()
-                    fetchVersion()
-                    readAntennaConfig()
+                    persistLastConnectedDevice(state)
+                    negotiateConnectedDevice()
                 } else {
                     stopBatteryPolling()
                     if (state is ConnectionState.Disconnected || state is ConnectionState.Error) {
@@ -164,7 +185,9 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
                             isScanningHf = false,
                             isTuningAntenna = false,
                             isRunningQcTest = false,
-                            isCheckingPwds = false
+                            isCheckingPwds = false,
+                            rdv4FlashInfo = null,
+                            smartcardAtrInfo = null
                         )
                     }
                 }
@@ -260,14 +283,37 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     fun refreshPairedDevices() {
         try {
             val bonded = bluetoothAdapter?.bondedDevices?.toList() ?: emptyList()
-            val sorted = bonded.sortedByDescending {
+            val sortedBle = bonded.sortedByDescending {
                 val n = try { it.name ?: "" } catch (_: SecurityException) { "" }
                 n.contains("Proxmark", ignoreCase = true) || n.contains("PM5", ignoreCase = true)
             }
-            _uiState.value = _uiState.value.copy(pairedDevices = sorted)
+            val classic = bonded.filter { dev ->
+                try {
+                    dev.type != BluetoothDevice.DEVICE_TYPE_LE
+                } catch (_: SecurityException) {
+                    false
+                }
+            }.sortedByDescending { dev ->
+                val n = try { dev.name ?: "" } catch (_: SecurityException) { "" }
+                n.contains("PM3", ignoreCase = true) ||
+                    n.contains("RDV4", ignoreCase = true) ||
+                    n.contains("Blueshark", ignoreCase = true) ||
+                    n.contains("HC-0", ignoreCase = true)
+            }
+            _uiState.value = _uiState.value.copy(
+                pairedDevices = sortedBle,
+                classicBtDevices = classic
+            )
         } catch (_: SecurityException) {
-            _uiState.value = _uiState.value.copy(pairedDevices = emptyList())
+            _uiState.value = _uiState.value.copy(
+                pairedDevices = emptyList(),
+                classicBtDevices = emptyList()
+            )
         }
+    }
+
+    fun refreshUsbDevices() {
+        _uiState.value = _uiState.value.copy(usbDevices = pm5Manager.scanUsbDevices())
     }
 
     fun onPermissionsDenied() {
@@ -297,12 +343,158 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun connectClassicBtDevice(device: BluetoothDevice) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            pm5Manager.connectClassicBt(device, bluetoothAdapter)
+            _uiState.value = _uiState.value.copy(isBusy = false)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun connectClassicBtAddress(mac: String) {
+        val adapter = bluetoothAdapter ?: return
+        val dev = try {
+            adapter.bondedDevices?.firstOrNull { it.address.equals(mac, ignoreCase = true) }
+                ?: adapter.getRemoteDevice(mac)
+        } catch (_: Exception) {
+            null
+        } ?: return
+        connectClassicBtDevice(dev)
+    }
+
+    fun connectUsbDevice(usb: DiscoveredUsbDevice) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true)
+            pm5Manager.connectUsb(usb.device)
+            _uiState.value = _uiState.value.copy(isBusy = false)
+        }
+    }
+
     fun connectTcp(host: String = _uiState.value.tcpHost, portStr: String = _uiState.value.tcpPort) {
         val port = portStr.toIntOrNull() ?: Pm5Constants.DEFAULT_WIFI_PORT
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBusy = true)
             pm5Manager.connectTcp(host, port)
             _uiState.value = _uiState.value.copy(isBusy = false)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun reconnectLastDevice(): Boolean {
+        val saved = lastDeviceStore.load() ?: return false
+        when (saved.transportKind) {
+            TransportKind.BLE_GATT -> {
+                val adapter = bluetoothAdapter ?: return false
+                val dev = try {
+                    adapter.getRemoteDevice(saved.addressOrHost)
+                } catch (_: Exception) {
+                    null
+                } ?: return false
+                selectDevice(dev)
+                connectSelectedDevice()
+                return true
+            }
+            TransportKind.CLASSIC_BT_SPP -> {
+                connectClassicBtAddress(saved.addressOrHost)
+                return true
+            }
+            TransportKind.USB_CDC -> {
+                refreshUsbDevices()
+                val usb = _uiState.value.usbDevices.firstOrNull() ?: return false
+                connectUsbDevice(usb)
+                return true
+            }
+            TransportKind.WIFI_TCP -> {
+                val port = if (saved.port > 0) saved.port else Pm5Constants.DEFAULT_WIFI_PORT
+                _uiState.value = _uiState.value.copy(tcpHost = saved.addressOrHost, tcpPort = port.toString())
+                connectTcp(saved.addressOrHost, port.toString())
+                return true
+            }
+        }
+    }
+
+    private fun persistLastConnectedDevice(state: ConnectionState.Connected) {
+        val record = when (state.transport) {
+            TransportKind.BLE_GATT.label -> LastDeviceRecord(
+                transportKind = TransportKind.BLE_GATT,
+                addressOrHost = state.address,
+                port = 0,
+                displayName = state.deviceName
+            )
+            TransportKind.CLASSIC_BT_SPP.label -> LastDeviceRecord(
+                transportKind = TransportKind.CLASSIC_BT_SPP,
+                addressOrHost = state.address,
+                port = 0,
+                displayName = state.deviceName
+            )
+            TransportKind.USB_CDC.label -> LastDeviceRecord(
+                transportKind = TransportKind.USB_CDC,
+                addressOrHost = state.address,
+                port = 0,
+                displayName = state.deviceName
+            )
+            TransportKind.WIFI_TCP.label -> {
+                val parts = state.address.split(":")
+                val host = parts.getOrElse(0) { _uiState.value.tcpHost }
+                val port = parts.getOrNull(1)?.toIntOrNull() ?: Pm5Constants.DEFAULT_WIFI_PORT
+                LastDeviceRecord(
+                    transportKind = TransportKind.WIFI_TCP,
+                    addressOrHost = host,
+                    port = port,
+                    displayName = state.deviceName
+                )
+            }
+            else -> return
+        }
+        lastDeviceStore.save(record)
+        _uiState.value = _uiState.value.copy(lastConnectedDevice = record)
+    }
+
+    private fun negotiateConnectedDevice() {
+        viewModelScope.launch {
+            val (cap, ver) = pm5Manager.negotiateDevice()
+            _uiState.value = _uiState.value.copy(
+                deviceCapabilities = cap,
+                versionInfo = ver
+            )
+            if (cap.capabilitiesKnown && cap.isPm5) {
+                startBatteryPolling()
+                if (cap.compiledWithBwm) {
+                    pm5Manager.readBattery()
+                }
+                readAntennaConfig()
+            } else {
+                stopBatteryPolling()
+                _uiState.value = _uiState.value.copy(
+                    batteryInfo = null,
+                    antennaConfig = null
+                )
+            }
+        }
+    }
+
+    fun readRdv4FlashInfo() {
+        viewModelScope.launch {
+            val info = pm5Manager.readRdv4FlashInfo()
+            _uiState.value = _uiState.value.copy(
+                rdv4FlashInfo = info,
+                statusBanner = if (info != null) {
+                    "SPI Flash: ${info.manufacturerName} (JEDEC 0x%04X), ${info.totalBytes / 1024} KB".format(info.jedecId)
+                } else {
+                    "SPI Flash info unavailable"
+                }
+            )
+        }
+    }
+
+    fun readSmartcardAtr() {
+        viewModelScope.launch {
+            val info = pm5Manager.readSmartcardAtr()
+            _uiState.value = _uiState.value.copy(
+                smartcardAtrInfo = info,
+                statusBanner = if (info.cardPresent) "Smartcard ATR: ${info.atrHex}" else info.message
+            )
         }
     }
 
@@ -332,7 +524,10 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
             while (isActive) {
                 val s = _uiState.value
                 val lfWatchActive = s.isAutoScanning || s.isWatchingHid || s.isWatchingEm4100 || s.isWatchingAwid || s.isWatchingIo
-                if (s.connectionState is ConnectionState.Connected && !s.isBusy && !lfWatchActive) {
+                val allowBwmPoll = s.deviceCapabilities.capabilitiesKnown &&
+                    s.deviceCapabilities.isPm5 &&
+                    s.deviceCapabilities.compiledWithBwm
+                if (allowBwmPoll && s.connectionState is ConnectionState.Connected && !s.isBusy && !lfWatchActive) {
                     pm5Manager.readBattery()
                 }
                 delay(4000)
@@ -507,7 +702,15 @@ class Pm5ViewModel(application: Application) : AndroidViewModel(application) {
     private fun fetchVersion() {
         viewModelScope.launch {
             val ver = pm5Manager.readVersion()
-            _uiState.value = _uiState.value.copy(versionInfo = ver)
+            val updatedCap = if (_uiState.value.deviceCapabilities.capabilitiesKnown) {
+                _uiState.value.deviceCapabilities.copy(fallbackVersionText = ver?.versionString ?: "")
+            } else {
+                DeviceCapabilities.fromVersionFallback(ver)
+            }
+            _uiState.value = _uiState.value.copy(
+                versionInfo = ver,
+                deviceCapabilities = updatedCap
+            )
         }
     }
 

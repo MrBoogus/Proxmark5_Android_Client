@@ -540,4 +540,82 @@ class ProtocolUnitTest {
             coding
         )
     }
+
+    @Test
+    fun `device capabilities parses real RDV4 v13 payload, PM5 v13 payload, and unknown fallback`() {
+        // Real 18-byte CMD_CAPABILITIES (0x0112) payload captured verbatim from PM3 RDV4
+        val rdv4Cap = DeviceCapabilities.fromCapabilitiesPayload(
+            hexToBytes("0d00c201007c7b0000ddffbf037002002000")
+        )
+        assertTrue(rdv4Cap.capabilitiesKnown)
+        assertEquals(13, rdv4Cap.version)
+        assertEquals(115200L, rdv4Cap.baudrate)
+        assertEquals(31612L, rdv4Cap.bigbufSize)
+        assertTrue(rdv4Cap.viaFpc)
+        assertFalse(rdv4Cap.viaUsb)
+        assertTrue(rdv4Cap.hwAvailableFlash)
+        assertTrue(rdv4Cap.hwAvailableSmartcard)
+        assertTrue(rdv4Cap.isRdv4)
+        assertFalse(rdv4Cap.isPm5)
+        assertFalse(rdv4Cap.compiledWithBwm)
+        assertFalse(rdv4Cap.compiledWithCep)
+        assertEquals(624, rdv4Cap.maxCmdDataSize)
+        assertEquals(8192, rdv4Cap.emSize)
+        assertEquals("Proxmark3 RDV4", rdv4Cap.modelLabel)
+
+        // Synthetic PM5 v13 payload with is_pm5 (bit 28) + compiled_with_bwm (tail bit 1) + compiled_with_cep (tail bit 2)
+        val pm5Flags = (1 shl 28) or (1 shl 1) or (1 shl 7) or (1 shl 14)
+        val pm5Payload = ByteBuffer.allocate(18).order(ByteOrder.LITTLE_ENDIAN)
+            .put(13.toByte())
+            .putInt(1500000)
+            .putInt(40000)
+            .putInt(pm5Flags)
+            .putShort(624)
+            .putShort(8192)
+            .put(0x06.toByte()) // compiledWithBwm + compiledWithCep
+            .array()
+        val pm5Cap = DeviceCapabilities.fromCapabilitiesPayload(pm5Payload)
+        assertTrue(pm5Cap.capabilitiesKnown)
+        assertTrue(pm5Cap.isPm5)
+        assertFalse(pm5Cap.isRdv4)
+        assertTrue(pm5Cap.compiledWithBwm)
+        assertTrue(pm5Cap.compiledWithCep)
+        assertEquals("Proxmark5 (PM5)", pm5Cap.modelLabel)
+
+        // Unknown capabilities version -> safe fallback hiding optional hardware cards
+        val unknownPayload = hexToBytes("0d00c201007c7b0000ddffbf037002002000").also { it[0] = 99 }
+        val fallback = DeviceCapabilities.fromCapabilitiesPayload(
+            unknownPayload,
+            VersionInfo(0L, 0L, "Iceman PM3 legacy")
+        )
+        assertFalse(fallback.capabilitiesKnown)
+        assertFalse(fallback.isPm5)
+        assertFalse(fallback.isRdv4)
+        assertFalse(fallback.hwAvailableFlash)
+        assertFalse(fallback.hwAvailableSmartcard)
+        assertFalse(fallback.compiledWithBwm)
+        assertEquals("Iceman PM3 legacy", fallback.fallbackVersionText)
+    }
+
+    @Test
+    fun `rdv4 flash info and smartcard atr decode real wire responses`() {
+        val flash = Rdv4FlashInfo.fromPayload(hexToBytes("ef11123004"))
+        assertNotNull(flash)
+        assertEquals("Winbond", flash!!.manufacturerName)
+        assertEquals(0xEF, flash.manufacturerId)
+        assertEquals(0x11, flash.deviceId)
+        assertEquals(0x3012, flash.jedecId)
+        assertEquals(4, flash.pages64k)
+        assertEquals(262144, flash.totalBytes)
+
+        val missingAtr = SmartcardAtrInfo.fromPayload(Pm5Constants.PM3_ETIMEOUT, ByteArray(0))
+        assertFalse(missingAtr.cardPresent)
+
+        val presentAtr = SmartcardAtrInfo.fromPayload(
+            Pm5Constants.PM3_SUCCESS,
+            byteArrayOf(0x04, 0x3B, 0x90.toByte(), 0x11, 0x00)
+        )
+        assertTrue(presentAtr.cardPresent)
+        assertEquals("3B 90 11 00", presentAtr.atrHex)
+    }
 }
