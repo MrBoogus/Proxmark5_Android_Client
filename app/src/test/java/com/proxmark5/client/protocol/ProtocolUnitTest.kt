@@ -1,5 +1,6 @@
 package com.proxmark5.client.protocol
 
+import com.proxmark5.client.comm.UsbCdcTransport
 import com.proxmark5.client.comm.VersionInfo
 import com.proxmark5.client.data.CapturedTag
 import com.proxmark5.client.data.SoftwareAesGcmVaultAead
@@ -525,5 +526,18 @@ class ProtocolUnitTest {
         assertEquals(1, frames.size)
         assertEquals(Pm5Constants.CMD_PING, frames[0].cmd)
         assertArrayEquals(pingPayload, frames[0].payload)
+    }
+
+    @Test
+    fun `usb cdc transport recognizes proxmark3 vid pids and builds 115200 8N1 line coding`() {
+        assertTrue(UsbCdcTransport.isProxmarkUsbDevice(0x9AC4, 0x4B8F))
+        assertTrue(UsbCdcTransport.isProxmarkUsbDevice(0x2D2D, 0x504D))
+        assertFalse(UsbCdcTransport.isProxmarkUsbDevice(0x1234, 0x5678))
+
+        val coding = UsbCdcTransport.buildLineCoding(115200)
+        assertArrayEquals(
+            byteArrayOf(0x00, 0xC2.toByte(), 0x01, 0x00, 0x00, 0x00, 0x08),
+            coding
+        )
     }
 }

@@ -1,6 +1,7 @@
 package com.proxmark5.client.comm
 
 import android.bluetooth.BluetoothDevice
+import android.hardware.usb.UsbDevice
 import com.proxmark5.client.protocol.Pm5ResponseFrame
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -105,4 +106,12 @@ data class DiscoveredBleDevice(
     val address: String,
     val rssi: Int = 0,
     val isProxmark5: Boolean = false
+)
+
+data class DiscoveredUsbDevice(
+    val device: UsbDevice,
+    val name: String,
+    val vendorId: Int,
+    val productId: Int,
+    val devicePath: String
 )

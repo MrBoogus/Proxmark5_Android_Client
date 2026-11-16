@@ -12,6 +12,8 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.util.Log
 import com.proxmark5.client.protocol.BadgeParser
@@ -450,6 +452,79 @@ class Pm5BleManager(
             mtu = transport.maxWriteChunkBytes
         )
         scope.launch { _logFlow.emit("[BT SPP] Connected to $devName ($devAddr)") }
+        true
+    }
+
+    // --- USB OTG CDC-ACM Connection ---
+
+    fun scanUsbDevices(): List<DiscoveredUsbDevice> {
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager ?: return emptyList()
+        return usbManager.deviceList.values
+            .filter { dev ->
+                UsbCdcTransport.isProxmarkUsbDevice(dev.vendorId, dev.productId) ||
+                    UsbCdcTransport.hasBulkSerialInterface(dev)
+            }
+            .map { dev ->
+                val label = dev.productName?.takeIf { it.isNotBlank() }
+                    ?: "PM3 USB (%04X:%04X)".format(dev.vendorId, dev.productId)
+                DiscoveredUsbDevice(
+                    device = dev,
+                    name = label,
+                    vendorId = dev.vendorId,
+                    productId = dev.productId,
+                    devicePath = dev.deviceName
+                )
+            }
+    }
+
+    suspend fun connectUsb(device: UsbDevice): Boolean = withContext(Dispatchers.IO) {
+        val usbManager = context.getSystemService(Context.USB_SERVICE) as? UsbManager
+        if (usbManager == null) {
+            _connectionState.value = ConnectionState.Error("USB Host service unavailable")
+            return@withContext false
+        }
+        disconnect()
+        val devName = device.productName?.takeIf { it.isNotBlank() }
+            ?: "PM3 USB (%04X:%04X)".format(device.vendorId, device.productId)
+        val devAddr = "%04X:%04X@%s".format(device.vendorId, device.productId, device.deviceName)
+        _connectionState.value = ConnectionState.Connecting(devName)
+        scope.launch { _logFlow.emit("[USB] Connecting to $devName ($devAddr)...") }
+
+        val transport = UsbCdcTransport(
+            context = context,
+            usbManager = usbManager,
+            device = device,
+            deviceName = devName,
+            address = devAddr
+        )
+        val ok = transport.connect(
+            scope = scope,
+            onBytesReceived = { bytes, len -> feedParserBytes(bytes, len) },
+            onDisconnected = { reason ->
+                if (activeTransport === transport) {
+                    activeTransport = null
+                }
+                if (_connectionState.value is ConnectionState.Connected) {
+                    _connectionState.value = ConnectionState.Disconnected
+                    scope.launch { _logFlow.emit("[USB] ${reason ?: "Disconnected"}") }
+                }
+            }
+        )
+        if (!ok) {
+            disconnect()
+            _connectionState.value = ConnectionState.Error("USB OTG connection failed for $devName")
+            return@withContext false
+        }
+
+        activeTransport = transport
+        writeChunkSize = transport.maxWriteChunkBytes
+        _connectionState.value = ConnectionState.Connected(
+            deviceName = devName,
+            address = devAddr,
+            transport = TransportKind.USB_CDC.label,
+            mtu = transport.maxWriteChunkBytes
+        )
+        scope.launch { _logFlow.emit("[USB] Connected to $devName ($devAddr)") }
         true
     }
 
