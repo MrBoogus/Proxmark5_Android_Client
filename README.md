@@ -100,14 +100,14 @@ Obtainium installs the app straight from GitHub Releases and notifies you of upd
 
 ### Option 1: Install Prebuilt Signed APK (Recommended)
 
-1. Download `Proxmark5-Android-Client-v1.0.2-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
+1. Download the latest `Proxmark5-Android-Client-vX.Y.Z-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
 2. Verify the SHA-256 checksum:
    ```bash
    sha256sum -c SHA256SUMS.txt
    ```
 3. Install on your Android device via `adb` or by opening the APK on your phone:
    ```bash
-   adb install -r Proxmark5-Android-Client-v1.0.2-release.apk
+   adb install -r Proxmark5-Android-Client-vX.Y.Z-release.apk
    ```
 
 ### Option 2: Build from Source
