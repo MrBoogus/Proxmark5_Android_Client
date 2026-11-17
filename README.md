@@ -86,6 +86,18 @@ All screenshots and the live `demo.mp4` / `demo.gif` in this repository were cap
 
 ## Installation & Building from Source
 
+### Install & auto-update with Obtainium
+
+Obtainium installs the app straight from GitHub Releases and notifies you of updates.
+
+[![Get it on Obtainium](https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/MrBoogus/Proxmark5_Android_Client)
+
+1. Install [Obtainium](https://github.com/ImranR98/Obtainium).
+2. Open Obtainium and tap **Add App**.
+3. Paste `https://github.com/MrBoogus/Proxmark5_Android_Client` and tap **Add**.
+
+> **Note:** The release APK is signed with the developer's own key; if you previously installed a different build (for example, a self-built debug APK), uninstall it first.
+
 ### Option 1: Install Prebuilt Signed APK (Recommended)
 
 1. Download `Proxmark5-Android-Client-v1.0.2-release.apk` and `SHA256SUMS.txt` from the [**Releases page**](https://github.com/MrBoogus/Proxmark5_Android_Client/releases/latest).
