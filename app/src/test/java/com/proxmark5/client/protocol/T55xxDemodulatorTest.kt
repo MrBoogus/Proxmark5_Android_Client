@@ -74,4 +74,24 @@ class T55xxDemodulatorTest {
         val defaultTimings = T55xxTimingConfig.defaultTimings()
         assertEquals(40 * 8, defaultTimings.modes[2].write1)
     }
+
+    @Test
+    fun `real physical T5577 card BigBuf capture decodes block 0 0x00148040`() {
+        val realB0 = loadDump("rdv4_real_t5577_b0_00148040.bin")
+
+        val singleRes = T55xxDemodulator.demodulate(realB0, isBlock0 = true)
+        assertTrue(singleRes is T55xxDemodResult.Success)
+        val ok = singleRes as T55xxDemodResult.Success
+        assertEquals(0x00148040L, ok.blockValue)
+        assertEquals(64, ok.clock)
+        assertEquals(T55xxModulation.MANCHESTER, ok.modulation)
+        assertEquals(
+            "Manchester, RF/64, MaxBlk:2, EM4100 Standard",
+            T55xxPayloadBuilder.decodeT55xxBlock0(ok.blockValue)
+        )
+
+        val verifiedRes = T55xxDemodulator.verifyTwoReads(realB0, realB0, isBlock0 = true)
+        assertTrue(verifiedRes is T55xxDemodResult.Success)
+        assertEquals(0x00148040L, (verifiedRes as T55xxDemodResult.Success).blockValue)
+    }
 }
