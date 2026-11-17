@@ -4,6 +4,26 @@ All notable changes to **Proxmark5 Android Client** are documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with deterministic Android `versionCode = MAJOR * 10000 + MINOR * 100 + PATCH`.
 
+## [1.0.4] - 2026-11-17 (`versionCode 10004`)
+
+### Added
+- Proxmark3 RDV4 support over Classic Bluetooth (SPP), tested on real hardware
+- Automatic device detection; the UI shows only the cards that match the connected device (PM5 or RDV4)
+- RDV4 read-only peripherals (SPI flash info, smartcard ATR)
+- T55xx block read with an in-app decoder (ASK/Manchester) for stock firmware
+- Reconnect to the last device
+- Experimental (not hardware-tested): USB OTG connection
+
+### Fixed
+- Bluetooth connect race on app start
+- Mode 2 T55xx timing
+
+### Known Limitations
+- T55xx FSK/HID decode not supported
+- Wi-Fi and USB OTG not hardware-tested on RDV4
+
+---
+
 ## [1.0.3] - 2026-11-15 (`versionCode 10003`)
 
 ### Security

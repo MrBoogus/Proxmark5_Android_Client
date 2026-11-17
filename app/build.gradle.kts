@@ -33,9 +33,9 @@ android {
         applicationId = "com.proxmark5.client"
         minSdk = 26
         targetSdk = 35
-        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.3 -> 10003)
-        versionCode = 10003
-        versionName = "1.0.3"
+        // SemVer: MAJOR * 10000 + MINOR * 100 + PATCH (1.0.4 -> 10004)
+        versionCode = 10004
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
