@@ -91,6 +91,11 @@ class Pm5BleManager(
     private var activeTransport: ProxmarkTransport? = null
 
     @Volatile
+    private var pendingConnectTransport: ProxmarkTransport? = null
+
+    private val connectMutex = Mutex()
+
+    @Volatile
     private var negotiatedMtu: Int = 23
     private var writeChunkSize: Int = 20
 
@@ -414,47 +419,61 @@ class Pm5BleManager(
         device: BluetoothDevice,
         adapter: BluetoothAdapter? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        disconnect()
-        val devName = try { device.name ?: "PM3-RDV4" } catch (_: SecurityException) { "PM3-RDV4" }
-        val devAddr = try { device.address ?: "" } catch (_: SecurityException) { "" }
-        _connectionState.value = ConnectionState.Connecting(devName)
-        scope.launch { _logFlow.emit("[BT SPP] Connecting to $devName ($devAddr)...") }
+        try {
+            pendingConnectTransport?.close()
+        } catch (_: Exception) {}
+        connectMutex.withLock {
+            closeTransportsInternal()
+            val devName = try { device.name ?: "PM3-RDV4" } catch (_: SecurityException) { "PM3-RDV4" }
+            val devAddr = try { device.address ?: "" } catch (_: SecurityException) { "" }
+            _connectionState.value = ConnectionState.Connecting(devName)
+            scope.launch { _logFlow.emit("[BT SPP] Connecting to $devName ($devAddr)...") }
 
-        val transport = ClassicBtSppTransport(
-            device = device,
-            adapter = adapter,
-            deviceName = devName,
-            address = devAddr
-        )
-        val ok = transport.connect(
-            scope = scope,
-            onBytesReceived = { bytes, len -> feedParserBytes(bytes, len) },
-            onDisconnected = { reason ->
-                if (activeTransport === transport) {
-                    activeTransport = null
-                }
-                if (_connectionState.value is ConnectionState.Connected) {
-                    _connectionState.value = ConnectionState.Disconnected
-                    scope.launch { _logFlow.emit("[BT SPP] Disconnected (${reason ?: "closed"})") }
+            val transport = ClassicBtSppTransport(
+                device = device,
+                adapter = adapter,
+                deviceName = devName,
+                address = devAddr
+            )
+            pendingConnectTransport = transport
+            val ok = try {
+                transport.connect(
+                    scope = scope,
+                    onBytesReceived = { bytes, len -> feedParserBytes(bytes, len) },
+                    onDisconnected = { reason ->
+                        if (activeTransport === transport) {
+                            activeTransport = null
+                        }
+                        if (_connectionState.value is ConnectionState.Connected) {
+                            _connectionState.value = ConnectionState.Disconnected
+                            scope.launch { _logFlow.emit("[BT SPP] Disconnected (${reason ?: "closed"})") }
+                        }
+                    }
+                )
+            } finally {
+                if (pendingConnectTransport === transport) {
+                    pendingConnectTransport = null
                 }
             }
-        )
-        if (!ok) {
-            disconnect()
-            _connectionState.value = ConnectionState.Error("Classic BT SPP connection failed for $devName")
-            return@withContext false
-        }
+            if (!ok) {
+                if (!transport.isClosed) {
+                    closeTransportsInternal()
+                    _connectionState.value = ConnectionState.Error("Classic BT SPP connection failed for $devName")
+                }
+                return@withContext false
+            }
 
-        activeTransport = transport
-        writeChunkSize = transport.maxWriteChunkBytes
-        _connectionState.value = ConnectionState.Connected(
-            deviceName = devName,
-            address = devAddr,
-            transport = TransportKind.CLASSIC_BT_SPP.label,
-            mtu = transport.maxWriteChunkBytes
-        )
-        scope.launch { _logFlow.emit("[BT SPP] Connected to $devName ($devAddr)") }
-        true
+            activeTransport = transport
+            writeChunkSize = transport.maxWriteChunkBytes
+            _connectionState.value = ConnectionState.Connected(
+                deviceName = devName,
+                address = devAddr,
+                transport = TransportKind.CLASSIC_BT_SPP.label,
+                mtu = transport.maxWriteChunkBytes
+            )
+            scope.launch { _logFlow.emit("[BT SPP] Connected to $devName ($devAddr)") }
+            true
+        }
     }
 
     // --- USB OTG CDC-ACM Connection ---
@@ -581,6 +600,11 @@ class Pm5BleManager(
 
     @SuppressLint("MissingPermission")
     private fun closeTransportsInternal() {
+        try {
+            pendingConnectTransport?.close()
+        } catch (_: Exception) {}
+        pendingConnectTransport = null
+
         try {
             activeTransport?.close()
         } catch (_: Exception) {}

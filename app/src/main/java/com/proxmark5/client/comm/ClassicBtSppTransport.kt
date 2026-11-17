@@ -47,6 +47,11 @@ class ClassicBtSppTransport(
     @Volatile
     private var open: Boolean = false
 
+    @Volatile
+    private var closed: Boolean = false
+    val isClosed: Boolean
+        get() = closed
+
     private var readJob: Job? = null
     private val writeMutex = Mutex()
 
@@ -59,6 +64,7 @@ class ClassicBtSppTransport(
         onBytesReceived: (ByteArray, Int) -> Unit,
         onDisconnected: (String?) -> Unit
     ): Boolean = withContext(Dispatchers.IO) {
+        if (closed) return@withContext false
         try {
             adapter?.cancelDiscovery()
         } catch (_: SecurityException) {
@@ -81,18 +87,26 @@ class ClassicBtSppTransport(
         var lastError: Exception? = null
 
         for (factory in candidates) {
+            if (closed) break
             var candidate: BluetoothSocket? = null
             try {
                 candidate = factory()
+                socket = candidate
                 candidate.connect()
+                if (closed) {
+                    try { candidate.close() } catch (_: Exception) {}
+                    break
+                }
                 connectedSocket = candidate
                 break
             } catch (e: IOException) {
                 lastError = e
+                if (socket === candidate) socket = null
                 try {
                     candidate?.close()
                 } catch (_: Exception) {
                 }
+                if (closed) break
                 // Wait briefly so HC-06 L2CAP state finishes closing before the next channel attempt.
                 try {
                     Thread.sleep(150)
@@ -103,8 +117,10 @@ class ClassicBtSppTransport(
             }
         }
 
-        if (connectedSocket == null) {
-            Log.e("PM3Spp", "SPP connect failed for $address: ${lastError?.message}")
+        if (closed || connectedSocket == null) {
+            if (!closed) {
+                Log.e("PM3Spp", "SPP connect failed for $address: ${lastError?.message}")
+            }
             return@withContext false
         }
 
@@ -165,6 +181,7 @@ class ClassicBtSppTransport(
     }
 
     override fun close() {
+        closed = true
         open = false
         readJob?.cancel()
         readJob = null
