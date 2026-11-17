@@ -658,6 +658,7 @@ fun DashboardTab(state: Pm5UiState, viewModel: Pm5ViewModel, isExpanded: Boolean
     val connected = state.connectionState is ConnectionState.Connected
     val showPm5Cards = !connected || (state.deviceCapabilities.capabilitiesKnown && state.deviceCapabilities.isPm5)
     val showRdv4Peripherals = connected && state.deviceCapabilities.capabilitiesKnown &&
+        state.deviceCapabilities.isRdv4 &&
         (state.deviceCapabilities.hwAvailableFlash || state.deviceCapabilities.hwAvailableSmartcard)
 
     AdaptiveTwoColumnPane(
@@ -691,6 +692,7 @@ fun DashboardHardwarePane(state: Pm5UiState, viewModel: Pm5ViewModel, modifier: 
     val connected = state.connectionState is ConnectionState.Connected
     val showPm5Cards = !connected || (state.deviceCapabilities.capabilitiesKnown && state.deviceCapabilities.isPm5)
     val showRdv4Peripherals = connected && state.deviceCapabilities.capabilitiesKnown &&
+        state.deviceCapabilities.isRdv4 &&
         (state.deviceCapabilities.hwAvailableFlash || state.deviceCapabilities.hwAvailableSmartcard)
 
     Column(
