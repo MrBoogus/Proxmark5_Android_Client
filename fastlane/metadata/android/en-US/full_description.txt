@@ -1,11 +1,14 @@
-Proxmark5 Android Client is a native Kotlin and Jetpack Compose hardware studio for the Proxmark5 (AT32F435 + Gowin FPGA) equipped with the ESP32-C2 Battery / Wireless Module (BWM).
+Proxmark5 Android Client is a native Kotlin and Jetpack Compose hardware studio for the Proxmark5 (AT32F435 + Gowin FPGA + ESP32-C2 BWM) and Proxmark3 RDV4 (Classic Bluetooth SPP). Note: real Proxmark5 or Proxmark3 RDV4 hardware is required to use this app.
 
-Rather than wrapping the full desktop pm3 CLI, it talks the binary PM3a / PM3b Next-Gen (NG) wire protocol directly over Bluetooth Low Energy (GATT service 0xAE86 / characteristic 0xAE88) and Wi-Fi TCP (:18888) with CRC-16/ISO14443-A verification.
+Rather than wrapping the full desktop pm3 CLI, it talks the binary PM3a / PM3b Next-Gen (NG) wire protocol directly over BLE GATT (0xAE86 / 0xAE88), Classic Bluetooth SPP (RDV4), Wi-Fi TCP (:18888), and experimental USB OTG with CRC-16/ISO14443-A verification.
 
 Features:
-• Power & Smart Antenna Dashboard: Live BQ27427 fuel-gauge and AW32001E charger telemetry (SoC, mV, mA, temperature, health), swappable antenna I2C 0x51 Register 0x02 capacitor bank & LED control, WS2812 RGB indicator (I2C 0x48), and LF/HF resonance tuning sweep.
-• LF Badge Studio & Cloner: Continuous watch and cyclic auto-scan for EM4100/EM410x, HID Prox, AWID, and IO Prox with 64-bit Manchester transponder cloning (T5577, Q5, EM4305).
-• HF NFC Studio: ISO 14443-A reader decoding 4/7/10-byte UIDs, ATQA, SAK, and ATS across MIFARE Classic, Ultralight / NTAG21x, and MIFARE DESFire.
-• T55xx Suite: Page 0 block reader/writer, dictionary audit, and deterministic White Cloner key calculator.
-• Credential Vault & Protocol Console: Local JSON credential store with export and real-time ANSI-stripped Dbprintf terminal.
-• Adaptive Layout: Supports compact phones/cover screens and unfolded foldable/tablet displays.
+• Automatic Device Detection: Parses CMD_CAPABILITIES (v13) and shows only the UI cards that match the connected PM5 or RDV4 hardware, plus quick reconnect to the last device.
+• Power & Smart Antenna Dashboard (PM5): Live BQ27427 fuel-gauge and AW32001E charger telemetry, swappable antenna I2C 0x51 capacitor bank & LED control, RGB indicator (I2C 0x48), and LF/HF resonance tuning sweep.
+• RDV4 Read-Only Peripherals: External SPI flash info (0x0148) and ISO 7816 smartcard ATR (0x0143) inspection.
+• LF Badge Studio & Cloner: Continuous watch and cyclic auto-scan for EM4100/EM410x, HID Prox, AWID, and IO Prox with 64-bit Manchester cloning.
+• HF NFC Studio: ISO 14443-A reader decoding 4/7/10-byte UIDs, ATQA, SAK, and ATS.
+• T55xx Suite: Block read/write with an in-app ASK/Manchester decoder for stock firmware, dictionary audit, and White Cloner key calculation (FSK/HID decode not supported).
+• Credential Vault & Console: Local AndroidKeyStore AES-256-GCM credential store with SAF JSON export and live Dbprintf terminal.
+
+Privacy & Permissions: The INTERNET permission is used strictly for local Wi-Fi TCP (:18888) communication with your Proxmark5 hardware — there are no cloud services, no external servers, and no analytics or tracking.

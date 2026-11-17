@@ -1,0 +1,8 @@
+v1.0.4:
+- Added Proxmark3 RDV4 over Classic Bluetooth (SPP), tested on real hardware
+- Added auto device detection; UI shows only matching PM5/RDV4 cards
+- Added RDV4 read-only peripherals (SPI flash info, smartcard ATR)
+- Added T55xx block read with in-app ASK/Manchester decoder for stock firmware
+- Added reconnect to last device & experimental USB OTG
+- Fixed BT connect race on start & Mode 2 T55xx timing
+- Limit: FSK/HID T55xx decode unsupported; Wi-Fi & USB OTG untested on RDV4
