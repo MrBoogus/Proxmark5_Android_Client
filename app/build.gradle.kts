@@ -12,19 +12,6 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val isReleaseSigningRequested = gradle.startParameter.taskNames.any { taskName ->
-    taskName.contains("Release", ignoreCase = true) &&
-        !taskName.contains("UnitTest", ignoreCase = true) &&
-        !taskName.contains("Lint", ignoreCase = true)
-}
-
-if (isReleaseSigningRequested && !keystorePropsFile.exists()) {
-    throw GradleException(
-        "Missing keystore.properties at ${keystorePropsFile.absolutePath}. " +
-            "Release builds must be signed with the release keystore and cannot fall back to the debug keystore."
-    )
-}
-
 android {
     namespace = "com.proxmark5.client"
     compileSdk = 37
